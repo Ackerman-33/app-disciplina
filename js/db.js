@@ -1,5 +1,5 @@
 // Único módulo que toca IndexedDB. El resto de la app usa estas funciones.
-import { isDayEmpty } from './logic.js';
+import { isDayEmpty, normalizeDay, sanitizeHours } from './logic.js';
 
 const DB_NAME = 'disciplina';
 const DB_VERSION = 1;
@@ -43,7 +43,31 @@ export const saveDay = (day) =>
     ? run('days', 'readwrite', (s) => s.delete(day.date))
     : run('days', 'readwrite', (s) => s.put(day));
 
-export const getSetting = (key, fallback) =>
+export const getAllDays = () => run('days', 'readonly', (s) => s.getAll());
+
+// Reemplaza TODO lo guardado por el contenido de un archivo ya validado (validateImport).
+// Una sola transacción: si algo falla, no se aplica nada y los datos actuales quedan intactos.
+export async function importAll(data) {
+  const db = await open();
+  const { startHour, endHour } = sanitizeHours(data.settings);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['days', 'settings'], 'readwrite');
+    const days = tx.objectStore('days');
+    const settings = tx.objectStore('settings');
+    days.clear();
+    for (const d of data.days) {
+      const day = normalizeDay(d);
+      if (!isDayEmpty(day)) days.put(day);
+    }
+    settings.put(startHour, 'startHour');
+    settings.put(endHour, 'endHour');
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+export const getSetting =(key, fallback) =>
   run('settings', 'readonly', (s) => s.get(key)).then((v) => (v === undefined ? fallback : v));
 
 export const setSetting = (key, value) => run('settings', 'readwrite', (s) => s.put(value, key));

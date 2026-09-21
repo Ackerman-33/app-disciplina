@@ -1,11 +1,12 @@
 // Director de orquesta: estado de la pantalla, carga/guardado del día, botones.
 import {
   dateKey, addDays, formatDateLong, countSummary, formatSummary, applyStatus, applyReason,
-  togglePriority, setPriorityText, normalizeDay,
+  togglePriority, setPriorityText, normalizeDay, sanitizeHours,
 } from './logic.js';
-import { getDay, saveDay, getSetting } from './db.js';
+import { getDay, saveDay, getSetting, setSetting } from './db.js';
 import { renderAgenda, refreshRow, markNow } from './agenda.js';
 import { renderPriorities, refreshPriority } from './priorities.js';
+import { initSettings } from './settings.js';
 import { ICONS } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
@@ -160,14 +161,49 @@ function tick() {
   updateNow(false);
 }
 
+// ---------- Ajustes ----------
+async function loadHours() {
+  const { startHour, endHour } = sanitizeHours({
+    startHour: await getSetting('startHour', 6),
+    endHour: await getSetting('endHour', 24),
+  });
+  state.startHour = startHour;
+  state.endHour = endHour;
+}
+
+async function onHoursChange(startHour, endHour) {
+  state.startHour = startHour;
+  state.endHour = endHour;
+  render(false);
+  await setSetting('startHour', startHour);
+  await setSetting('endHour', endHour);
+}
+
+// Después de importar un archivo: se vuelve a leer todo desde la base de datos.
+async function onDataReplaced() {
+  await loadHours();
+  await showDate(state.date, { scroll: false });
+}
+
+// Le pide al navegador que no borre los datos si el celular se queda sin espacio.
+// Chrome decide solo (suele aceptar si la app está instalada): por eso se reintenta en cada apertura.
+async function requestPersistence() {
+  try {
+    if (navigator.storage?.persist && !(await navigator.storage.persisted())) {
+      await navigator.storage.persist();
+    }
+  } catch (err) {
+    console.warn('No se pudo pedir almacenamiento persistente', err);
+  }
+}
+
 // ---------- Arranque ----------
 async function init() {
   $('prev').innerHTML = ICONS.prev;
   $('next').innerHTML = ICONS.next;
 
   try {
-    state.startHour = await getSetting('startHour', 6);
-    state.endHour = await getSetting('endHour', 24);
+    await loadHours();
     state.lastToday = dateKey(new Date());
     await showDate(state.lastToday);
   } catch (err) {
@@ -189,6 +225,18 @@ async function init() {
   });
   window.addEventListener('pagehide', flush);
   setInterval(tick, 30000);
+
+  initSettings({
+    root: $('settings'),
+    openBtn: $('openSettings'),
+    hooks: {
+      getHours: () => ({ start: state.startHour, end: state.endHour }),
+      onHoursChange,
+      flush,
+      onDataReplaced,
+    },
+  });
+  requestPersistence();
 }
 
 init();

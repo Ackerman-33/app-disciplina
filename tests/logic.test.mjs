@@ -5,6 +5,7 @@ import {
   isDayEmpty, countSummary, validateImport,
   applyStatus, applyReason, formatSummary, REASONS,
   togglePriority, setPriorityText, normalizeDay, ROMAN,
+  clampHours, sanitizeHours, buildExport, exportFileName, formatBytes,
 } from '../js/logic.js';
 
 test('dateKey usa la fecha LOCAL, no UTC', () => {
@@ -177,4 +178,51 @@ test('normalizeDay completa prioridades y renglones que falten', () => {
   assert.equal(d2.priorities.length, 3);
   assert.deepEqual(d2.priorities[0], { text: 'solo una', done: true });
   assert.deepEqual(d2.slots, {});
+});
+
+// ---------- Etapa 1D: horario, export, formatos ----------
+test('clampHours acota a 0-23 / 1-24', () => {
+  assert.deepEqual(clampHours(-3, 30, 'start'), { startHour: 0, endHour: 24 });
+  assert.deepEqual(clampHours(6, 24, 'start'), { startHour: 6, endHour: 24 });
+});
+
+test('clampHours: el fin siempre queda después del inicio', () => {
+  // muevo el inicio por encima del fin => el fin se corre
+  assert.deepEqual(clampHours(20, 18, 'start'), { startHour: 20, endHour: 21 });
+  assert.deepEqual(clampHours(23, 18, 'start'), { startHour: 23, endHour: 24 });
+  // muevo el fin por debajo del inicio => el inicio se corre
+  assert.deepEqual(clampHours(10, 8, 'end'), { startHour: 7, endHour: 8 });
+  assert.deepEqual(clampHours(10, 1, 'end'), { startHour: 0, endHour: 1 });
+});
+
+test('sanitizeHours usa 6-24 si vienen valores inválidos', () => {
+  assert.deepEqual(sanitizeHours(undefined), { startHour: 6, endHour: 24 });
+  assert.deepEqual(sanitizeHours({ startHour: 'x', endHour: null }), { startHour: 6, endHour: 24 });
+  assert.deepEqual(sanitizeHours({ startHour: 5, endHour: 23 }), { startHour: 5, endHour: 23 });
+  assert.deepEqual(sanitizeHours({ startHour: 12, endHour: 3 }), { startHour: 12, endHour: 13 });
+});
+
+test('buildExport arma el archivo con días ordenados por fecha', () => {
+  const now = new Date('2026-09-21T10:00:00.000Z');
+  const out = buildExport({
+    days: [{ date: '2026-09-20', slots: {}, priorities: [] }, { date: '2026-09-18', slots: {}, priorities: [] }],
+    startHour: 6, endHour: 24, now,
+  });
+  assert.equal(out.app, 'app-disciplina');
+  assert.equal(out.schemaVersion, 1);
+  assert.equal(out.exportedAt, '2026-09-21T10:00:00.000Z');
+  assert.deepEqual(out.settings, { startHour: 6, endHour: 24 });
+  assert.deepEqual(out.days.map((d) => d.date), ['2026-09-18', '2026-09-20']);
+  // el archivo generado tiene que ser aceptado por nuestro propio validador
+  assert.equal(validateImport(out).ok, true);
+});
+
+test('exportFileName usa la fecha local', () => {
+  assert.equal(exportFileName(new Date(2026, 8, 21, 23, 50)), 'disciplina-2026-09-21.json');
+});
+
+test('formatBytes', () => {
+  assert.equal(formatBytes(500), '500 B');
+  assert.equal(formatBytes(1536), '1,5 KB');
+  assert.equal(formatBytes(5 * 1024 * 1024), '5,0 MB');
 });

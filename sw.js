@@ -1,6 +1,6 @@
 // Service worker: guarda una copia de la app y la sirve aunque no haya internet.
 // IMPORTANTE: cada vez que se publique un cambio en cualquier archivo, subir este número.
-const CACHE_VERSION = 'disciplina-v6';
+const CACHE_VERSION = 'disciplina-v7';
 
 const ASSETS = [
   './',
@@ -13,6 +13,7 @@ const ASSETS = [
   './js/icons.js',
   './js/logic.js',
   './js/priorities.js',
+  './js/settings.js',
   './fonts/bebas-neue-400.woff2',
   './fonts/space-mono-400.woff2',
   './fonts/space-mono-700.woff2',

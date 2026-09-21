@@ -111,6 +111,45 @@ export function formatSummary({ done, failed, changed, pending }) {
   return changed > 0 ? `${base} · ${changed} cambió` : base;
 }
 
+// Inicio 0-23, fin 1-24 (exclusivo) y el fin siempre después del inicio.
+// `changed` dice cuál de los dos acaba de tocar el usuario: ese se respeta y el otro se corre.
+export function clampHours(start, end, changed = 'start') {
+  let s = Math.min(23, Math.max(0, Math.round(start)));
+  let e = Math.min(24, Math.max(1, Math.round(end)));
+  if (e <= s) {
+    if (changed === 'end') s = e - 1;
+    else e = s + 1;
+  }
+  return { startHour: s, endHour: e };
+}
+
+// Para valores que vienen de afuera (archivo importado, base de datos): si algo no sirve, 6 a 24.
+export function sanitizeHours(settings) {
+  const ok = (n) => typeof n === 'number' && Number.isFinite(n);
+  const s = ok(settings?.startHour) ? settings.startHour : 6;
+  const e = ok(settings?.endHour) ? settings.endHour : 24;
+  return clampHours(s, e, 'start');
+}
+
+export function buildExport({ days, startHour, endHour, now }) {
+  return {
+    app: APP_ID,
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: now.toISOString(),
+    settings: { startHour, endHour },
+    days: [...days].sort((a, b) => a.date.localeCompare(b.date)),
+  };
+}
+
+export const exportFileName = (now) => `disciplina-${dateKey(now)}.json`;
+
+export function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  const kb = n / 1024;
+  if (kb < 1024) return `${kb.toFixed(1).replace('.', ',')} KB`;
+  return `${(kb / 1024).toFixed(1).replace('.', ',')} MB`;
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function validateImport(data) {

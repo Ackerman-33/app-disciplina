@@ -13,7 +13,10 @@
 </head>
 <body>
   <header class="top">
-    <div class="brand">DISCIPLINA</div>
+    <div class="brandbar">
+      <div class="brand">DISCIPLINA</div>
+      <button id="openSettings" class="linkbtn" type="button">AJUSTES</button>
+    </div>
     <nav class="datebar" aria-label="Navegación de días">
       <button id="prev" class="nav" type="button" aria-label="Día anterior"></button>
       <div class="datewrap">
@@ -29,6 +32,8 @@
   <section id="prios" class="prios" aria-label="Lo que hoy no se negocia"></section>
 
   <main id="agenda" class="agenda" aria-label="Agenda del día"></main>
+
+  <div id="settings" class="settings" hidden></div>
 
   <script type="module" src="./js/app.js"></script>
 </body>
