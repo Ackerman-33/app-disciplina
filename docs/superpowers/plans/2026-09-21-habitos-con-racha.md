@@ -1352,6 +1352,11 @@ Pedirle a Simon: abrir la app dos veces para actualizar; comprobar `RACHA 0` en 
 
 ---
 
+## Desviaciones respecto del plan (registradas durante la ejecución)
+
+- **Orden de los hábitos:** al probar la Task 4 apareció que IndexedDB devuelve los hábitos ordenados por `id` (aleatorio). Se agregó `sortHabits(habits)` en `logic.js` (por `createdAt` y luego por nombre, con su test) y se usa en `loadHabitData` y en `buildExport`. Tests: 47.
+- **Servidor de pruebas:** se agregó `dev-server.py` (fuera del repo) con `Cache-Control: no-store` porque el servidor simple de Python dejaba al navegador con archivos viejos.
+
 ## Self-review (hecha al terminar de escribir)
 
 **Cobertura del spec** — modelo de datos (Task 1, 2), migración 1→2 con datos reales (Task 2 Step 4), marcas en la ficha del día y `normalizeDay`/`isDayEmpty` (Task 1, 4), export/import v1 y v2 con `importAll` atómico (Task 1, 2, 5), racha con todas las reglas (Task 7), bloque HÁBITOS que se oculta si no toca ninguno (Task 4), gestión en Ajustes con sugerencias, "Todos los días", validación, editar y archivar sin borrar (Task 3), marcar días pasados y racha a la fecha vista (Task 4, 7, 8), resumen de la agenda sin cambios (no se toca `countSummary`), dos entregas con prueba en el celu (Task 6, 9). Límites conocidos del spec: no hay tarea porque son "no hacer".

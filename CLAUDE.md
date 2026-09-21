@@ -88,11 +88,12 @@ Sub-etapas: **1A** base + agenda + PWA + publicación en Pages · **1B** cumplim
 ### Estado actual (actualizar al avanzar)
 - **1A, 1B, 1C, 1D, 1E: TERMINADAS y publicadas** en https://ackerman-33.github.io/app-disciplina/ (repo `Ackerman-33/app-disciplina`, rama `main`, Pages desde la raíz).
 - **ETAPA 1 COMPLETA y confirmada por Simon en su Android (2026-09-21):** 1A a 1E funcionan en su celu (prioridades, Ajustes, exportar/importar, modo avión). 1C-1E las construyó Claude de noche y se verificaron con tests y en el navegador de la PC antes.
-- Siguiente: planificar la Etapa 2 (ver lista "PARA DESPUÉS"). Pendiente menor: decidir si HOY abre mostrando las prioridades primero.
+- **Etapa 2A en curso** (hábitos con frecuencia propia, marcas y racha). Diseño: `docs/superpowers/specs/2026-09-21-habitos-con-racha-design.md`; plan: `docs/superpowers/plans/2026-09-21-habitos-con-racha.md`. Entrega 1 (hábitos y marcas) publicada como `disciplina-v8`, pendiente de prueba en el celu; Entrega 2 (racha) pendiente. Base IndexedDB en versión 2 (store `habits`); export en `schemaVersion` 2 (los `.json` de la versión 1 se siguen pudiendo importar). Los hábitos se muestran ordenados por fecha de creación y luego por nombre (`sortHabits`).
+- Siguientes piezas de la Etapa 2: 2B (cierre nocturno de 2 minutos) y 2C (días tipo), cada una con su propio diseño y plan. Pendiente menor: decidir si HOY abre mostrando las prioridades primero.
 - Guía de respaldo para Simon: `GUIA-RESPALDO.md`.
-- Al publicar cualquier cambio: correr `node --test`, subir `CACHE_VERSION` en `sw.js` (hoy `disciplina-v7`), commit y `git push`. Si se agrega un archivo a `js/`, `fonts/` o `icons/`, agregarlo a `ASSETS` en `sw.js` (un test lo verifica).
+- Al publicar cualquier cambio: correr `node --test`, subir `CACHE_VERSION` en `sw.js` (hoy `disciplina-v8`), commit y `git push`. Si se agrega un archivo a `js/`, `fonts/` o `icons/`, agregarlo a `ASSETS` en `sw.js` (un test lo verifica).
 - Pendiente de decidir con Simon: al abrir HOY la agenda se centra en la hora actual y las prioridades quedan arriba (hay que subir el scroll).
-- Para probar en la PC: `.claude/launch.json` (en la carpeta padre `PROYECTO SIMON`) define el servidor `app-local` (puerto 8080). El service worker cachea agresivo: para ver cambios locales, desregistrarlo y borrar cachés (o subir `CACHE_VERSION` y recargar dos veces).
+- Para probar en la PC: `.claude/launch.json` (en la carpeta padre `PROYECTO SIMON`, fuera del repo) arranca `dev-server.py` (también en la carpeta padre): sirve `app-disciplina/` en el puerto 8080 con `Cache-Control: no-store`. Aun así el service worker cachea agresivo: para ver cambios locales hay que desregistrarlo, borrar las cachés y **cargar la página dos veces** (la primera vuelve a registrar el SW; la segunda ya usa el código nuevo). Usar `?r=N` distinto en cada carga.
 
 Entregable final Etapa 1: app instalada en el Android de Simon, en GitHub Pages, más guía corta de "qué hago si cambio de celu o se me borran los datos".
 
