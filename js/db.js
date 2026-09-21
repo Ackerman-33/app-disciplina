@@ -2,19 +2,31 @@
 import { isDayEmpty, normalizeDay, sanitizeHours } from './logic.js';
 
 const DB_NAME = 'disciplina';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let dbPromise = null;
 
 function open() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
+      req.onupgradeneeded = (event) => {
         const db = req.result;
-        db.createObjectStore('days', { keyPath: 'date' });
-        db.createObjectStore('settings');
+        // oldVersion es 0 en una instalación nueva y 1 si viene de la Etapa 1.
+        if (event.oldVersion < 1) {
+          db.createObjectStore('days', { keyPath: 'date' });
+          db.createObjectStore('settings');
+        }
+        if (event.oldVersion < 2) db.createObjectStore('habits', { keyPath: 'id' });
       };
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => {
+        const db = req.result;
+        // Si una versión futura necesita actualizar la base, esta conexión se cierra para no bloquearla.
+        db.onversionchange = () => {
+          db.close();
+          dbPromise = null;
+        };
+        resolve(db);
+      };
       req.onerror = () => reject(req.error);
     });
   }
@@ -45,20 +57,27 @@ export const saveDay = (day) =>
 
 export const getAllDays = () => run('days', 'readonly', (s) => s.getAll());
 
+export const getAllHabits = () => run('habits', 'readonly', (s) => s.getAll());
+export const saveHabit = (habit) => run('habits', 'readwrite', (s) => s.put(habit));
+
 // Reemplaza TODO lo guardado por el contenido de un archivo ya validado (validateImport).
 // Una sola transacción: si algo falla, no se aplica nada y los datos actuales quedan intactos.
 export async function importAll(data) {
   const db = await open();
   const { startHour, endHour } = sanitizeHours(data.settings);
+  const habits = Array.isArray(data.habits) ? data.habits : []; // un archivo v1 no trae hábitos
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(['days', 'settings'], 'readwrite');
+    const tx = db.transaction(['days', 'settings', 'habits'], 'readwrite');
     const days = tx.objectStore('days');
     const settings = tx.objectStore('settings');
+    const habitStore = tx.objectStore('habits');
     days.clear();
+    habitStore.clear();
     for (const d of data.days) {
       const day = normalizeDay(d);
       if (!isDayEmpty(day)) days.put(day);
     }
+    for (const h of habits) habitStore.put(h);
     settings.put(startHour, 'startHour');
     settings.put(endHour, 'endHour');
     tx.oncomplete = () => resolve();
