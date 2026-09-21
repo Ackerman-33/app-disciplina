@@ -83,6 +83,29 @@ export function applyReason(slot, reason) {
   return { ...slot, reason: slot.reason === reason ? null : reason };
 }
 
+export const ROMAN = ['I', 'II', 'III'];
+
+// Marcar hecha una prioridad vacía no tiene sentido: no hace nada.
+export function togglePriority(p) {
+  if ((p.text || '').trim() === '') return { ...p };
+  return { ...p, done: !p.done };
+}
+
+// Si se borra todo el texto, la prioridad vuelve a "no hecha".
+export function setPriorityText(p, text) {
+  return { text, done: text.trim() === '' ? false : p.done };
+}
+
+// Completa lo que le falte a un día (por ejemplo, días guardados con menos de 3 prioridades).
+export function normalizeDay(day) {
+  const saved = Array.isArray(day.priorities) ? day.priorities : [];
+  return {
+    ...day,
+    priorities: ROMAN.map((_, i) => ({ text: saved[i]?.text ?? '', done: saved[i]?.done ?? false })),
+    slots: day.slots || {},
+  };
+}
+
 export function formatSummary({ done, failed, changed, pending }) {
   const base = `${done} cumplido · ${failed} caído · ${pending} sin marcar`;
   return changed > 0 ? `${base} · ${changed} cambió` : base;

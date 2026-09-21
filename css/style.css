@@ -103,6 +103,40 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .slot::placeholder { color: var(--gris); opacity: .45; }
 .slot:focus { background: rgba(201, 162, 75, .05); box-shadow: inset 0 -1px 0 var(--bronce-apagado); }
 
+/* ---------- Prioridades del día ---------- */
+.prios { max-width: var(--ancho-max); margin: 0 auto; border-bottom: 1px solid var(--bronce-apagado); }
+.prios-title {
+  margin: 0; padding: 16px 16px 10px;
+  font-family: var(--titulo); font-weight: 400; font-size: 20px; letter-spacing: .24em; text-transform: uppercase;
+  color: var(--bronce);
+}
+.prio {
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) 52px; align-items: center;
+  min-height: 56px; background: var(--fila); border-top: 1px solid var(--linea);
+}
+.prio[data-i="1"] { background: var(--fila-alt); }
+.roman { padding-left: 16px; font-family: var(--titulo); font-size: 28px; letter-spacing: .06em; color: var(--bronce-apagado); }
+.ptext { position: relative; min-width: 0; }
+.pinput {
+  width: 100%; padding: 16px 4px 16px 8px;
+  background: transparent; border: 0; border-radius: 0; outline: 0;
+  font-family: var(--mono); font-size: 15px; color: var(--hueso); caret-color: var(--bronce);
+  text-overflow: ellipsis;
+}
+.pinput::placeholder { color: var(--gris); opacity: .45; }
+.pinput:focus { background: rgba(201, 162, 75, .05); box-shadow: inset 0 -1px 0 var(--bronce-apagado); }
+/* Hecha: el texto se apaga (no se pone verde) y lo cruza UNA línea fina, del ancho del texto. */
+.pstrike { position: absolute; left: 8px; top: 50%; height: 1px; width: 0; background: var(--gris); display: none; pointer-events: none; }
+.prio.done .pstrike { display: block; }
+.prio.done .pinput { color: var(--gris); }
+.pbox {
+  width: 36px; height: 36px; padding: 6px; margin: 0 auto;
+  color: var(--bronce); border: 1px solid var(--linea);
+}
+.pbox svg { opacity: 0; }
+.pbox[aria-pressed="true"] { border-color: var(--bronce-apagado); }
+.pbox[aria-pressed="true"] svg { opacity: 1; }
+
 /* ---------- Marcas de cumplimiento ---------- */
 .marks { display: flex; padding: 4px 4px 0 0; }
 .mark {

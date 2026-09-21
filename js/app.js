@@ -1,14 +1,17 @@
 // Director de orquesta: estado de la pantalla, carga/guardado del día, botones.
 import {
   dateKey, addDays, formatDateLong, countSummary, formatSummary, applyStatus, applyReason,
+  togglePriority, setPriorityText, normalizeDay,
 } from './logic.js';
 import { getDay, saveDay, getSetting } from './db.js';
 import { renderAgenda, refreshRow, markNow } from './agenda.js';
+import { renderPriorities, refreshPriority } from './priorities.js';
 import { ICONS } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 const pad2 = (n) => String(n).padStart(2, '0');
 const agendaEl = $('agenda');
+const priosEl = $('prios');
 
 const state = {
   date: null,       // día que se está viendo, "YYYY-MM-DD"
@@ -20,12 +23,6 @@ const state = {
   nav: 0,           // contador para descartar cargas de días que llegaron tarde
   lastToday: null,  // cuál era "hoy" en la última revisión (para detectar la medianoche)
 };
-
-const emptyDay = (date) => ({
-  date,
-  priorities: [0, 1, 2].map(() => ({ text: '', done: false })),
-  slots: {},
-});
 
 // ---------- Guardado ----------
 async function flush() {
@@ -71,6 +68,18 @@ function onReason(hour, reason) {
   refreshRow(agendaEl, hour, currentSlot(hour));
 }
 
+function onPriorityText(i, text) {
+  state.day.priorities[i] = setPriorityText(state.day.priorities[i], text);
+  refreshPriority(priosEl, i, state.day.priorities[i]);
+  scheduleSave();
+}
+
+function onPriorityToggle(i) {
+  state.day.priorities[i] = togglePriority(state.day.priorities[i]);
+  refreshPriority(priosEl, i, state.day.priorities[i]);
+  scheduleSave();
+}
+
 // Resumen en vivo: se recalcula solo con cada cambio, sin esperar al cierre del día.
 function updateSummary() {
   const c = countSummary(state.day, state.startHour, state.endHour);
@@ -112,6 +121,11 @@ function render(scroll) {
   $('dateLabel').textContent = formatDateLong(state.date);
   $('datePicker').value = state.date;
   $('today').setAttribute('aria-current', String(state.date === today));
+  renderPriorities(priosEl, {
+    priorities: state.day.priorities,
+    onText: onPriorityText,
+    onToggle: onPriorityToggle,
+  });
   renderAgenda(agendaEl, {
     day: state.day,
     startHour: state.startHour,
@@ -127,7 +141,7 @@ function render(scroll) {
 async function showDate(date, { scroll = true } = {}) {
   const mine = ++state.nav;
   await flush(); // primero guardo lo del día que dejo
-  const day = (await getDay(date)) || emptyDay(date);
+  const day = normalizeDay((await getDay(date)) || { date });
   if (mine !== state.nav) return; // el usuario ya pidió otro día mientras cargaba
   state.date = date;
   state.day = day;

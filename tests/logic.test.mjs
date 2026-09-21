@@ -4,6 +4,7 @@ import {
   dateKey, addDays, hoursRange, hourLabel, formatDateLong,
   isDayEmpty, countSummary, validateImport,
   applyStatus, applyReason, formatSummary, REASONS,
+  togglePriority, setPriorityText, normalizeDay, ROMAN,
 } from '../js/logic.js';
 
 test('dateKey usa la fecha LOCAL, no UTC', () => {
@@ -142,4 +143,38 @@ test('formatSummary: "cambió" aparece solo si es mayor que 0', () => {
     formatSummary({ done: 3, failed: 1, changed: 2, pending: 0 }),
     '3 cumplido · 1 caído · 0 sin marcar · 2 cambió',
   );
+});
+
+// ---------- Etapa 1C: prioridades ----------
+test('ROMAN: numeración I, II, III', () => {
+  assert.deepEqual(ROMAN, ['I', 'II', 'III']);
+});
+
+test('togglePriority alterna hecho / no hecho', () => {
+  const p = { text: 'Inglés', done: false };
+  const p1 = togglePriority(p);
+  assert.equal(p1.done, true);
+  assert.equal(togglePriority(p1).done, false);
+  assert.equal(p.done, false); // no muta el original
+});
+
+test('togglePriority no marca hecha una prioridad vacía', () => {
+  assert.equal(togglePriority({ text: '', done: false }).done, false);
+  assert.equal(togglePriority({ text: '   ', done: false }).done, false);
+});
+
+test('setPriorityText: si borro todo el texto, se des-marca', () => {
+  assert.deepEqual(setPriorityText({ text: 'algo', done: true }, ''), { text: '', done: false });
+  assert.deepEqual(setPriorityText({ text: 'algo', done: true }, 'otra cosa'), { text: 'otra cosa', done: true });
+});
+
+test('normalizeDay completa prioridades y renglones que falten', () => {
+  const d = normalizeDay({ date: '2026-09-21', slots: { '07': { text: 'a', status: null, reason: null } } });
+  assert.equal(d.priorities.length, 3);
+  assert.deepEqual(d.priorities[0], { text: '', done: false });
+  assert.equal(d.slots['07'].text, 'a');
+  const d2 = normalizeDay({ date: 'x', priorities: [{ text: 'solo una', done: true }] });
+  assert.equal(d2.priorities.length, 3);
+  assert.deepEqual(d2.priorities[0], { text: 'solo una', done: true });
+  assert.deepEqual(d2.slots, {});
 });
