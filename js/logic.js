@@ -1,6 +1,6 @@
 // Lógica pura: sin DOM ni IndexedDB, así se puede testear con `node --test`.
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const APP_ID = 'app-disciplina';
 
 const DIAS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
@@ -44,6 +44,7 @@ export function isDayEmpty(day) {
   if (slots.some((s) => (s.text || '').trim() !== '' || s.status)) return false;
   const prios = day.priorities || [];
   if (prios.some((p) => (p.text || '').trim() !== '' || p.done)) return false;
+  if (Object.keys(day.habits || {}).length > 0) return false;
   return true;
 }
 
@@ -103,6 +104,7 @@ export function normalizeDay(day) {
     ...day,
     priorities: ROMAN.map((_, i) => ({ text: saved[i]?.text ?? '', done: saved[i]?.done ?? false })),
     slots: day.slots || {},
+    habits: day.habits && typeof day.habits === 'object' ? { ...day.habits } : {},
   };
 }
 
@@ -131,13 +133,14 @@ export function sanitizeHours(settings) {
   return clampHours(s, e, 'start');
 }
 
-export function buildExport({ days, startHour, endHour, now }) {
+export function buildExport({ days, habits = [], startHour, endHour, now }) {
   return {
     app: APP_ID,
     schemaVersion: SCHEMA_VERSION,
     exportedAt: now.toISOString(),
     settings: { startHour, endHour },
     days: [...days].sort((a, b) => a.date.localeCompare(b.date)),
+    habits: [...habits].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name)),
   };
 }
 
@@ -152,6 +155,18 @@ export function formatBytes(n) {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+function isValidHabit(h) {
+  return (
+    !!h &&
+    typeof h.id === 'string' && h.id !== '' &&
+    typeof h.name === 'string' && h.name.trim() !== '' &&
+    Array.isArray(h.days) && h.days.length > 0 &&
+    h.days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6) &&
+    typeof h.createdAt === 'string' && DATE_RE.test(h.createdAt) &&
+    (h.archivedAt === null || (typeof h.archivedAt === 'string' && DATE_RE.test(h.archivedAt)))
+  );
+}
+
 export function validateImport(data) {
   if (!data || typeof data !== 'object') return { ok: false, error: 'El archivo no tiene el formato esperado.' };
   if (data.app !== APP_ID) return { ok: false, error: 'Este archivo no es un export de esta app.' };
@@ -162,6 +177,54 @@ export function validateImport(data) {
   if (data.days.some((d) => !d || typeof d.date !== 'string' || !DATE_RE.test(d.date))) {
     return { ok: false, error: 'Hay días con fecha inválida.' };
   }
+  if (data.schemaVersion >= 2 && (!Array.isArray(data.habits) || !data.habits.every(isValidHabit))) {
+    return { ok: false, error: 'Hay hábitos inválidos en el archivo.' };
+  }
   const dates = data.days.map((d) => d.date).sort();
-  return { ok: true, count: dates.length, first: dates[0] || null, last: dates[dates.length - 1] || null };
+  return {
+    ok: true,
+    count: dates.length,
+    first: dates[0] || null,
+    last: dates[dates.length - 1] || null,
+    habitCount: Array.isArray(data.habits) ? data.habits.length : 0,
+  };
+}
+
+// ---------- Hábitos ----------
+export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+export const WEEK_LETTERS = { 1: 'L', 2: 'M', 3: 'X', 4: 'J', 5: 'V', 6: 'S', 0: 'D' };
+
+export const weekdayOf = (key) => parseKey(key).getDay();
+
+// ¿Este hábito "toca" en esa fecha?
+export function habitTocaEn(habit, key) {
+  if (key < habit.createdAt) return false; // "YYYY-MM-DD" se ordena bien como texto
+  if (habit.archivedAt && key >= habit.archivedAt) return false;
+  return habit.days.includes(weekdayOf(key));
+}
+
+export function validateHabitInput({ name, days }) {
+  const clean = (name || '').trim();
+  if (!clean) return { ok: false, error: 'Poné un nombre.' };
+  if (clean.length > 40) return { ok: false, error: 'El nombre puede tener hasta 40 caracteres.' };
+  const uniq = [...new Set(days || [])].filter((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+  if (uniq.length === 0) return { ok: false, error: 'Elegí al menos un día.' };
+  return { ok: true, name: clean, days: uniq.sort((a, b) => a - b) };
+}
+
+export const newHabit = ({ name, days }, todayKey, id) => ({ id, name, days, createdAt: todayKey, archivedAt: null });
+
+export const archiveHabit = (habit, todayKey) => ({ ...habit, archivedAt: todayKey });
+
+// Tocar la marca activa la quita; tocar la otra la cambia. No muta el objeto original.
+export function applyHabitMark(marks, habitId, mark) {
+  const next = { ...(marks || {}) };
+  if (next[habitId] === mark) delete next[habitId];
+  else next[habitId] = mark;
+  return next;
+}
+
+export function formatDays(days) {
+  if (days.length === 7) return 'Todos los días';
+  return WEEK_ORDER.filter((n) => days.includes(n)).map((n) => WEEK_LETTERS[n]).join(' ');
 }

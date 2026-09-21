@@ -6,6 +6,8 @@ import {
   applyStatus, applyReason, formatSummary, REASONS,
   togglePriority, setPriorityText, normalizeDay, ROMAN,
   clampHours, sanitizeHours, buildExport, exportFileName, formatBytes,
+  WEEK_ORDER, WEEK_LETTERS, weekdayOf, habitTocaEn, validateHabitInput,
+  newHabit, archiveHabit, applyHabitMark, formatDays,
 } from '../js/logic.js';
 
 test('dateKey usa la fecha LOCAL, no UTC', () => {
@@ -209,7 +211,8 @@ test('buildExport arma el archivo con días ordenados por fecha', () => {
     startHour: 6, endHour: 24, now,
   });
   assert.equal(out.app, 'app-disciplina');
-  assert.equal(out.schemaVersion, 1);
+  assert.equal(out.schemaVersion, 2);
+  assert.deepEqual(out.habits, []);
   assert.equal(out.exportedAt, '2026-09-21T10:00:00.000Z');
   assert.deepEqual(out.settings, { startHour: 6, endHour: 24 });
   assert.deepEqual(out.days.map((d) => d.date), ['2026-09-18', '2026-09-20']);
@@ -225,4 +228,115 @@ test('formatBytes', () => {
   assert.equal(formatBytes(500), '500 B');
   assert.equal(formatBytes(1536), '1,5 KB');
   assert.equal(formatBytes(5 * 1024 * 1024), '5,0 MB');
+});
+
+// ---------- Etapa 2A: hábitos ----------
+const daily = { id: 'h1', name: 'Inglés', days: [0, 1, 2, 3, 4, 5, 6], createdAt: '2026-09-10', archivedAt: null };
+
+test('WEEK_ORDER y WEEK_LETTERS: semana L M X J V S D', () => {
+  assert.deepEqual(WEEK_ORDER.map((n) => WEEK_LETTERS[n]), ['L', 'M', 'X', 'J', 'V', 'S', 'D']);
+});
+
+test('weekdayOf usa la fecha local: 2026-09-21 es lunes, 2026-09-20 domingo', () => {
+  assert.equal(weekdayOf('2026-09-21'), 1);
+  assert.equal(weekdayOf('2026-09-20'), 0);
+});
+
+test('habitTocaEn: solo los días elegidos', () => {
+  const lmv = { ...daily, days: [1, 3, 5] };
+  assert.equal(habitTocaEn(lmv, '2026-09-21'), true); // lunes
+  assert.equal(habitTocaEn(lmv, '2026-09-22'), false); // martes
+  assert.equal(habitTocaEn(lmv, '2026-09-23'), true); // miércoles
+});
+
+test('habitTocaEn: no toca antes de crearse', () => {
+  assert.equal(habitTocaEn(daily, '2026-09-09'), false);
+  assert.equal(habitTocaEn(daily, '2026-09-10'), true);
+});
+
+test('habitTocaEn: archivado deja de tocar desde el día de archivo', () => {
+  const arch = { ...daily, archivedAt: '2026-09-20' };
+  assert.equal(habitTocaEn(arch, '2026-09-19'), true);
+  assert.equal(habitTocaEn(arch, '2026-09-20'), false);
+});
+
+test('validateHabitInput acepta, limpia y ordena', () => {
+  assert.deepEqual(validateHabitInput({ name: '  Inglés ', days: [5, 1, 1, 3] }), { ok: true, name: 'Inglés', days: [1, 3, 5] });
+});
+
+test('validateHabitInput rechaza nombre vacío, largo, sin días o días inválidos', () => {
+  assert.equal(validateHabitInput({ name: '   ', days: [1] }).ok, false);
+  assert.equal(validateHabitInput({ name: 'x'.repeat(41), days: [1] }).ok, false);
+  assert.equal(validateHabitInput({ name: 'Ok', days: [] }).ok, false);
+  assert.equal(validateHabitInput({ name: 'Ok', days: [9, -1] }).ok, false);
+  assert.equal(validateHabitInput({ name: 'x'.repeat(40), days: [0] }).ok, true);
+});
+
+test('newHabit y archiveHabit', () => {
+  const h = newHabit({ name: 'Inglés', days: [1] }, '2026-09-21', 'abc');
+  assert.deepEqual(h, { id: 'abc', name: 'Inglés', days: [1], createdAt: '2026-09-21', archivedAt: null });
+  const a = archiveHabit(h, '2026-09-25');
+  assert.equal(a.archivedAt, '2026-09-25');
+  assert.equal(h.archivedAt, null); // no muta
+});
+
+test('applyHabitMark: marca, cambia y quita (sin mutar)', () => {
+  const m0 = {};
+  const m1 = applyHabitMark(m0, 'h1', 'done');
+  assert.deepEqual(m1, { h1: 'done' });
+  assert.deepEqual(m0, {});
+  assert.deepEqual(applyHabitMark(m1, 'h1', 'failed'), { h1: 'failed' });
+  assert.deepEqual(applyHabitMark(m1, 'h1', 'done'), {});
+  assert.deepEqual(applyHabitMark(undefined, 'h2', 'done'), { h2: 'done' });
+});
+
+test('formatDays', () => {
+  assert.equal(formatDays([0, 1, 2, 3, 4, 5, 6]), 'Todos los días');
+  assert.equal(formatDays([5, 1, 3]), 'L X V');
+  assert.equal(formatDays([0, 6]), 'S D');
+});
+
+test('normalizeDay agrega habits vacío y respeta el existente', () => {
+  assert.deepEqual(normalizeDay({ date: 'x' }).habits, {});
+  assert.deepEqual(normalizeDay({ date: 'x', habits: { h1: 'done' } }).habits, { h1: 'done' });
+});
+
+test('isDayEmpty: una marca de hábito cuenta como contenido', () => {
+  assert.equal(isDayEmpty({ date: 'x', slots: {}, priorities: [], habits: {} }), true);
+  assert.equal(isDayEmpty({ date: 'x', slots: {}, priorities: [], habits: { h1: 'failed' } }), false);
+});
+
+test('validateImport: acepta v1 sin hábitos y v2 con hábitos', () => {
+  const base = { app: 'app-disciplina', days: [] };
+  const h = { id: 'a', name: 'Inglés', days: [1], createdAt: '2026-09-10', archivedAt: null };
+  const v1 = validateImport({ ...base, schemaVersion: 1 });
+  assert.equal(v1.ok, true);
+  assert.equal(v1.habitCount, 0);
+  const v2 = validateImport({ ...base, schemaVersion: 2, habits: [h, { ...h, id: 'b', archivedAt: '2026-09-20' }] });
+  assert.equal(v2.ok, true);
+  assert.equal(v2.habitCount, 2);
+});
+
+test('validateImport: rechaza v2 sin hábitos, hábitos inválidos y versiones futuras', () => {
+  const base = { app: 'app-disciplina', days: [] };
+  const h = { id: 'a', name: 'Inglés', days: [1], createdAt: '2026-09-10', archivedAt: null };
+  assert.equal(validateImport({ ...base, schemaVersion: 2 }).ok, false);
+  assert.equal(validateImport({ ...base, schemaVersion: 2, habits: [{ ...h, days: [9] }] }).ok, false);
+  assert.equal(validateImport({ ...base, schemaVersion: 2, habits: [{ ...h, name: '' }] }).ok, false);
+  assert.equal(validateImport({ ...base, schemaVersion: 2, habits: [{ ...h, createdAt: 'ayer' }] }).ok, false);
+  assert.equal(validateImport({ ...base, schemaVersion: 3, habits: [] }).ok, false);
+});
+
+test('buildExport v2 incluye hábitos ordenados por fecha de creación', () => {
+  const out = buildExport({
+    days: [],
+    habits: [
+      { id: 'b', name: 'Ejercicio', days: [1], createdAt: '2026-09-15', archivedAt: null },
+      { id: 'a', name: 'Inglés', days: [1], createdAt: '2026-09-10', archivedAt: null },
+    ],
+    startHour: 6, endHour: 24, now: new Date('2026-09-21T10:00:00.000Z'),
+  });
+  assert.equal(out.schemaVersion, 2);
+  assert.deepEqual(out.habits.map((h) => h.id), ['a', 'b']);
+  assert.equal(validateImport(out).ok, true);
 });
