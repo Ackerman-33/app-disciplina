@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   dateKey, addDays, hoursRange, hourLabel, formatDateLong,
   isDayEmpty, countSummary, validateImport,
+  applyStatus, applyReason, formatSummary, REASONS,
 } from '../js/logic.js';
 
 test('dateKey usa la fecha LOCAL, no UTC', () => {
@@ -89,4 +90,56 @@ test('validateImport rechaza basura', () => {
   assert.equal(validateImport({ app: 'app-disciplina', schemaVersion: 99, days: [] }).ok, false);
   assert.equal(validateImport({ app: 'app-disciplina', schemaVersion: 1, days: [{ date: 'mal' }] }).ok, false);
   assert.equal(validateImport({ app: 'app-disciplina', schemaVersion: 1, days: 'no' }).ok, false);
+});
+
+// ---------- Etapa 1B: marcas ----------
+test('applyStatus: un toque marca, el mismo toque desmarca', () => {
+  const s0 = { text: 'inglés', status: null, reason: null };
+  const s1 = applyStatus(s0, 'done');
+  assert.equal(s1.status, 'done');
+  assert.equal(s1.text, 'inglés');
+  assert.equal(applyStatus(s1, 'done').status, null);
+});
+
+test('applyStatus funciona sobre un renglón que todavía no existe', () => {
+  const s = applyStatus(undefined, 'failed');
+  assert.deepEqual(s, { text: '', status: 'failed', reason: null });
+});
+
+test('applyStatus: al cambiar de marca se borra el motivo', () => {
+  const failed = { text: 'x', status: 'failed', reason: 'impulso' };
+  const s = applyStatus(failed, 'changed');
+  assert.equal(s.status, 'changed');
+  assert.equal(s.reason, null);
+});
+
+test('applyStatus no modifica el objeto original', () => {
+  const s0 = { text: 'a', status: null, reason: null };
+  applyStatus(s0, 'done');
+  assert.equal(s0.status, null);
+});
+
+test('applyReason: solo con "no cumplido"; tocar el mismo motivo lo quita', () => {
+  const failed = { text: 'x', status: 'failed', reason: null };
+  const r1 = applyReason(failed, 'cansancio');
+  assert.equal(r1.reason, 'cansancio');
+  assert.equal(applyReason(r1, 'cansancio').reason, null);
+  assert.equal(applyReason(r1, 'impulso').reason, 'impulso');
+  const done = { text: 'x', status: 'done', reason: null };
+  assert.equal(applyReason(done, 'impulso').reason, null);
+});
+
+test('REASONS trae los 5 motivos definidos', () => {
+  assert.deepEqual(REASONS.map((r) => r.id), ['impulso', 'cansancio', 'imprevisto', 'procrastine', 'otro']);
+});
+
+test('formatSummary: "cambió" aparece solo si es mayor que 0', () => {
+  assert.equal(
+    formatSummary({ done: 3, failed: 1, changed: 0, pending: 2 }),
+    '3 cumplido · 1 caído · 2 sin marcar',
+  );
+  assert.equal(
+    formatSummary({ done: 3, failed: 1, changed: 2, pending: 0 }),
+    '3 cumplido · 1 caído · 0 sin marcar · 2 cambió',
+  );
 });

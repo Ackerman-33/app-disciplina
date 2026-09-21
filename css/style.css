@@ -74,7 +74,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 .row {
   position: relative;
-  display: flex; align-items: flex-start;
+  display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: start;
   min-height: 52px;
   background: var(--fila);
   border-bottom: 1px solid var(--linea);
@@ -87,21 +87,54 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 }
 
 .hour {
-  flex: 0 0 64px; padding: 12px 0 0 16px;
+  padding: 12px 0 0 16px;
   font-family: var(--titulo); font-size: 24px; letter-spacing: .06em; line-height: 28px;
   color: var(--hueso);
 }
 .row.now .hour { padding-left: 16px; }
 
 .slot {
-  flex: 1; min-width: 0;
-  padding: 14px 12px 14px 8px;
+  width: 100%; min-width: 0;
+  padding: 14px 4px 14px 8px;
   background: transparent; border: 0; border-radius: 0; outline: 0; resize: none; overflow: hidden;
   font-family: var(--mono); font-size: 15px; line-height: 1.4; color: var(--hueso);
   caret-color: var(--bronce);
 }
 .slot::placeholder { color: var(--gris); opacity: .45; }
 .slot:focus { background: rgba(201, 162, 75, .05); box-shadow: inset 0 -1px 0 var(--bronce-apagado); }
+
+/* ---------- Marcas de cumplimiento ---------- */
+.marks { display: flex; padding: 4px 4px 0 0; }
+.mark {
+  width: 38px; height: 44px; padding: 12px 9px;
+  color: var(--gris); opacity: .3; /* "sin registrar": contorno tenue, sin color de estado */
+}
+.mark[aria-pressed="true"] { opacity: 1; }
+.mark[data-status="done"][aria-pressed="true"] { color: var(--bronce); }
+.mark[data-status="failed"][aria-pressed="true"] { color: var(--rojo-claro); }
+.mark[data-status="changed"][aria-pressed="true"] { color: var(--pizarra); }
+.mark:active { opacity: .8; }
+
+/* Motivos del "no cumplido": fila propia debajo del texto */
+.reasons { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 12px 8px; }
+.reasons[hidden] { display: none; }
+.chip {
+  min-height: 34px; padding: 0 10px;
+  font-family: var(--mono); font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--gris); border: 1px solid var(--linea);
+}
+.chip[aria-pressed="true"] { color: var(--rojo-claro); border-color: var(--rojo); background: rgba(138, 43, 34, .16); }
+
+/* ---------- Resumen en vivo (ficha) ---------- */
+.summary {
+  max-width: var(--ancho-max); margin: 0 auto; padding: 0 16px 10px;
+  font-size: 11px; letter-spacing: 0; color: var(--gris); text-transform: uppercase; white-space: nowrap;
+}
+.summary .n { font-family: var(--titulo); font-size: 18px; letter-spacing: .04em; vertical-align: -1px; }
+.n-done { color: var(--bronce); }
+.n-failed { color: var(--rojo-claro); }
+.n-pending { color: var(--hueso); }
+.n-changed { color: var(--pizarra); }
 
 .fatal { margin: 24px 16px; padding: 16px; border: 1px solid var(--rojo); color: var(--rojo-claro); }
 

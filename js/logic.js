@@ -62,6 +62,32 @@ export function countSummary(day, startHour, endHour) {
   return out;
 }
 
+export const REASONS = [
+  { id: 'impulso', label: 'Impulso' },
+  { id: 'cansancio', label: 'Cansancio' },
+  { id: 'imprevisto', label: 'Imprevisto' },
+  { id: 'procrastine', label: 'Procrastiné' },
+  { id: 'otro', label: 'Otro' },
+];
+
+// Devuelve el renglón nuevo (no modifica el original).
+// Tocar la marca que ya estaba activa la apaga: vuelve a "sin registrar".
+export function applyStatus(slot, status) {
+  const cur = slot || { text: '', status: null, reason: null };
+  return { ...cur, status: cur.status === status ? null : status, reason: null };
+}
+
+// El motivo solo tiene sentido si el renglón está "no cumplido". Tocar el mismo motivo lo quita.
+export function applyReason(slot, reason) {
+  if (!slot || slot.status !== 'failed') return slot;
+  return { ...slot, reason: slot.reason === reason ? null : reason };
+}
+
+export function formatSummary({ done, failed, changed, pending }) {
+  const base = `${done} cumplido · ${failed} caído · ${pending} sin marcar`;
+  return changed > 0 ? `${base} · ${changed} cambió` : base;
+}
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function validateImport(data) {

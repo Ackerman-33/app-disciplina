@@ -1,7 +1,9 @@
 // Director de orquesta: estado de la pantalla, carga/guardado del día, botones.
-import { dateKey, addDays, formatDateLong } from './logic.js';
+import {
+  dateKey, addDays, formatDateLong, countSummary, formatSummary, applyStatus, applyReason,
+} from './logic.js';
 import { getDay, saveDay, getSetting } from './db.js';
-import { renderAgenda, markNow } from './agenda.js';
+import { renderAgenda, refreshRow, markNow } from './agenda.js';
 import { ICONS } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
@@ -40,12 +42,56 @@ function scheduleSave() {
   state.timer = setTimeout(flush, 400);
 }
 
-function onText(hour, text) {
+// Guarda el renglón nuevo en el día; si quedó sin texto y sin marca, lo saca (no dejamos fichas vacías).
+function putSlot(hour, slot) {
   const key = pad2(hour);
-  const slot = (state.day.slots[key] ||= { text: '', status: null, reason: null });
-  slot.text = text;
-  if (text.trim() === '' && !slot.status) delete state.day.slots[key];
+  if (slot.text.trim() === '' && !slot.status) delete state.day.slots[key];
+  else state.day.slots[key] = slot;
+  updateSummary();
   scheduleSave();
+}
+
+function currentSlot(hour) {
+  return state.day.slots[pad2(hour)];
+}
+
+function onText(hour, text) {
+  putSlot(hour, { text: '', status: null, reason: null, ...currentSlot(hour), text });
+}
+
+function onStatus(hour, status) {
+  putSlot(hour, applyStatus(currentSlot(hour), status));
+  refreshRow(agendaEl, hour, currentSlot(hour));
+}
+
+function onReason(hour, reason) {
+  const slot = currentSlot(hour);
+  if (!slot) return;
+  putSlot(hour, applyReason(slot, reason));
+  refreshRow(agendaEl, hour, currentSlot(hour));
+}
+
+// Resumen en vivo: se recalcula solo con cada cambio, sin esperar al cierre del día.
+function updateSummary() {
+  const c = countSummary(state.day, state.startHour, state.endHour);
+  const el = $('summary');
+  const parts = [
+    ['done', c.done, 'cumplido'],
+    ['failed', c.failed, 'caído'],
+    ['pending', c.pending, 'sin marcar'],
+  ];
+  if (c.changed > 0) parts.push(['changed', c.changed, 'cambió']);
+  el.replaceChildren(
+    ...parts.flatMap(([kind, n, label], i) => {
+      const num = document.createElement('span');
+      num.className = `n n-${kind}`;
+      num.textContent = n;
+      const nodes = [num, document.createTextNode(` ${label}`)];
+      if (i < parts.length - 1) nodes.push(document.createTextNode(' · '));
+      return nodes;
+    }),
+  );
+  el.setAttribute('aria-label', formatSummary(c));
 }
 
 // ---------- Pantalla ----------
@@ -71,7 +117,10 @@ function render(scroll) {
     startHour: state.startHour,
     endHour: state.endHour,
     onText,
+    onStatus,
+    onReason,
   });
+  updateSummary();
   updateNow(scroll);
 }
 
