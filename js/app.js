@@ -2,9 +2,9 @@
 import {
   dateKey, addDays, formatDateLong, countSummary, formatSummary, applyStatus, applyReason,
   togglePriority, setPriorityText, normalizeDay, sanitizeHours, habitTocaEn, applyHabitMark,
-  sortHabits,
+  sortHabits, currentStreak, buildMarksIndex,
 } from './logic.js';
-import { getDay, saveDay, getSetting, setSetting, getAllHabits } from './db.js';
+import { getDay, saveDay, getSetting, setSetting, getAllHabits, getAllDays } from './db.js';
 import { renderAgenda, refreshRow, markNow } from './agenda.js';
 import { renderPriorities, refreshPriority } from './priorities.js';
 import { renderHabits, refreshHabit } from './habits.js';
@@ -23,6 +23,7 @@ const state = {
   startHour: 6,
   endHour: 24,
   habits: [],       // todos los hábitos (también los archivados)
+  marks: {},        // { [habitId]: { [fecha]: 'done'|'failed' } } para calcular rachas
   dirty: false,    // hay cambios sin guardar
   timer: null,      // temporizador del guardado diferido
   nav: 0,           // contador para descartar cargas de días que llegaron tarde
@@ -90,13 +91,26 @@ function visibleHabits() {
   return state.habits.filter((h) => habitTocaEn(h, state.date));
 }
 
+// Racha del hábito "a la fecha que se está viendo" (nunca más allá de hoy).
+function streakOf(habit) {
+  return currentStreak(habit, state.marks[habit.id] || {}, state.date, dateKey(new Date()));
+}
+
 function renderHabitBlock() {
-  renderHabits(habitsEl, { habits: visibleHabits(), marks: state.day.habits, onMark: onHabitMark });
+  const habits = visibleHabits();
+  const streaks = Object.fromEntries(habits.map((h) => [h.id, streakOf(h)]));
+  renderHabits(habitsEl, { habits, marks: state.day.habits, streaks, onMark: onHabitMark });
 }
 
 function onHabitMark(id, mark) {
   state.day.habits = applyHabitMark(state.day.habits, id, mark);
-  refreshHabit(habitsEl, id, state.day.habits[id] ?? null);
+  const current = state.day.habits[id] ?? null;
+  // el índice de marcas se mantiene al día con cada toque
+  const byDate = (state.marks[id] ||= {});
+  if (current) byDate[state.date] = current;
+  else delete byDate[state.date];
+  const habit = state.habits.find((h) => h.id === id);
+  refreshHabit(habitsEl, id, current, streakOf(habit));
   scheduleSave();
 }
 
@@ -201,6 +215,7 @@ async function onHoursChange(startHour, endHour) {
 
 async function loadHabitData() {
   state.habits = sortHabits(await getAllHabits());
+  state.marks = buildMarksIndex(await getAllDays());
 }
 
 async function onHabitsChanged() {

@@ -140,10 +140,12 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* ---------- Hábitos de hoy ---------- */
 .habits { max-width: var(--ancho-max); margin: 0 auto; border-bottom: 1px solid var(--bronce-apagado); }
 .habit {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center;
   min-height: 56px; padding-left: 16px; background: var(--fila); border-top: 1px solid var(--linea);
 }
 .habit:nth-of-type(even) { background: var(--fila-alt); }
+.hstreak { padding-right: 8px; font-family: var(--titulo); font-size: 18px; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; color: var(--gris); }
+.hstreak.on { color: var(--bronce); }
 .hname { padding: 12px 8px 12px 0; font-size: 15px; overflow-wrap: anywhere; }
 .hmarks { display: flex; padding-right: 4px; }
 

@@ -6,12 +6,15 @@ const MARKS = [
   { mark: 'failed', label: 'No cumplido' },
 ];
 
-function paint(row, mark) {
+function paint(row, mark, streak) {
   row.querySelectorAll('.mark').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.status === mark)));
+  const el = row.querySelector('.hstreak');
+  el.textContent = `Racha ${streak}`;
+  el.classList.toggle('on', streak > 0);
 }
 
-// opts: { habits (los que tocan hoy), marks: { [id]: 'done'|'failed' }, onMark(id, mark) }
-export function renderHabits(container, { habits, marks, onMark }) {
+// opts: { habits (los que tocan hoy), marks: { [id]: 'done'|'failed' }, streaks: { [id]: number }, onMark(id, mark) }
+export function renderHabits(container, { habits, marks, streaks, onMark }) {
   container.textContent = '';
   container.hidden = habits.length === 0; // si hoy no toca ninguno, el bloque no se muestra
   if (habits.length === 0) return;
@@ -43,13 +46,16 @@ export function renderHabits(container, { habits, marks, onMark }) {
       box.append(b);
     }
 
-    row.append(name, box);
+    const streak = document.createElement('div');
+    streak.className = 'hstreak';
+
+    row.append(name, streak, box);
     container.append(row);
-    paint(row, marks[h.id] ?? null);
+    paint(row, marks[h.id] ?? null, streaks[h.id] ?? 0);
   }
 }
 
-export function refreshHabit(container, id, mark) {
+export function refreshHabit(container, id, mark, streak) {
   const row = container.querySelector(`.habit[data-id="${CSS.escape(id)}"]`);
-  if (row) paint(row, mark);
+  if (row) paint(row, mark, streak);
 }
