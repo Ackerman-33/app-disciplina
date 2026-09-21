@@ -85,6 +85,14 @@ Interacción definida:
 
 Sub-etapas: **1A** base + agenda + PWA + publicación en Pages · **1B** cumplimiento + resumen · **1C** prioridades · **1D** ajustes + export/import + ayuda + persistencia · **1E** cierre (prueba offline real, guía "cambié de celu / se borraron los datos").
 
+### Estado actual (actualizar al avanzar)
+- **1A, 1B, 1C, 1D, 1E: TERMINADAS y publicadas** en https://ackerman-33.github.io/app-disciplina/ (repo `Ackerman-33/app-disciplina`, rama `main`, Pages desde la raíz).
+- 1A y 1B fueron confirmadas por Simon en su celu. **1C, 1D y 1E las construyó Claude de noche mientras Simon dormía**: verificadas con tests (`node --test`) y en el navegador de la PC (incluido offline con el servidor apagado y ciclo exportar → alterar → importar), pero **pendientes de prueba en el celu**.
+- Guía de respaldo para Simon: `GUIA-RESPALDO.md`.
+- Al publicar cualquier cambio: correr `node --test`, subir `CACHE_VERSION` en `sw.js` (hoy `disciplina-v7`), commit y `git push`. Si se agrega un archivo a `js/`, `fonts/` o `icons/`, agregarlo a `ASSETS` en `sw.js` (un test lo verifica).
+- Pendiente de decidir con Simon: al abrir HOY la agenda se centra en la hora actual y las prioridades quedan arriba (hay que subir el scroll).
+- Para probar en la PC: `.claude/launch.json` (en la carpeta padre `PROYECTO SIMON`) define el servidor `app-local` (puerto 8080). El service worker cachea agresivo: para ver cambios locales, desregistrarlo y borrar cachés (o subir `CACHE_VERSION` y recargar dos veces).
+
 Entregable final Etapa 1: app instalada en el Android de Simon, en GitHub Pages, más guía corta de "qué hago si cambio de celu o se me borran los datos".
 
 ## PARA DESPUÉS (NO programar todavía)
