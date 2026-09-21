@@ -11,6 +11,7 @@ Dirección de la app: **https://ackerman-33.github.io/app-disciplina/**
 1. Abrí la app → tocá **AJUSTES** (arriba a la derecha).
 2. En **Tus datos**, tocá **Guardar archivo**. Se genera `disciplina-AAAA-MM-DD.json`.
    - Si aparece el botón **Compartir**, sirve para mandarlo directo a WhatsApp (a vos mismo), Drive o el mail.
+   - El archivo incluye tus días, tus **hábitos** (también los archivados) y tus marcas. Las rachas no se guardan: se recalculan solas a partir de las marcas.
 3. **Guardalo fuera del celular.** Un archivo que queda solo en Descargas se pierde con el celu.
    - Opción fácil: mandátelo por WhatsApp a tu propio número o subilo a Google Drive.
 4. Arriba de los botones dice la fecha del último archivo guardado. Si dice "todavía no guardaste ningún archivo", hacelo ya.

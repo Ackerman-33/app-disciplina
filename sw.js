@@ -1,6 +1,6 @@
 // Service worker: guarda una copia de la app y la sirve aunque no haya internet.
 // IMPORTANTE: cada vez que se publique un cambio en cualquier archivo, subir este número.
-const CACHE_VERSION = 'disciplina-v8';
+const CACHE_VERSION = 'disciplina-v9';
 
 const ASSETS = [
   './',
