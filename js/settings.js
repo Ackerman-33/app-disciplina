@@ -1,8 +1,9 @@
 // Pantalla de ajustes: horario, exportar/importar, estado del almacenamiento y ayuda.
 import {
   clampHours, buildExport, exportFileName, validateImport, formatBytes, formatDateLong, dateKey,
+  validateHabitInput, newHabit, archiveHabit, formatDays, WEEK_ORDER, WEEK_LETTERS,
 } from './logic.js';
-import { getAllDays, importAll, getSetting, setSetting } from './db.js';
+import { getAllDays, importAll, getSetting, setSetting, getAllHabits, saveHabit } from './db.js';
 import { ICONS } from './icons.js';
 
 const TEMPLATE = `
@@ -19,6 +20,28 @@ const TEMPLATE = `
       <label>Hasta <select id="selEnd"></select></label>
     </div>
     <p class="note">Las horas que quedan fuera del rango no se borran: siguen guardadas, solo se ocultan.</p>
+  </section>
+
+  <section class="block" id="habitsBlock">
+    <h2>Hábitos</h2>
+    <p class="note">Cada hábito toca solo los días que elijas. La racha cuenta únicamente esos días.</p>
+    <ul class="hlist" id="habitList"></ul>
+    <div id="habitSuggest" hidden>
+      <p class="note">Todavía no tenés hábitos. Tocá uno para empezar:</p>
+      <div class="chips" id="habitChips"></div>
+    </div>
+    <form class="hform" id="habitForm" hidden novalidate>
+      <label class="flabel">Nombre <input type="text" id="habitName" maxlength="40" autocomplete="off"></label>
+      <div class="flabel">Días en que toca</div>
+      <div class="dayrow" id="dayRow" role="group" aria-label="Días en que toca"></div>
+      <button type="button" class="textbtn" id="daysAll">Todos los días</button>
+      <p class="msg error" id="habitMsg" role="alert"></p>
+      <div class="btnrow">
+        <button type="submit" class="btn">Guardar</button>
+        <button type="button" class="btn" id="habitCancel">Cancelar</button>
+      </div>
+    </form>
+    <div class="btnrow"><button type="button" class="btn" id="habitAdd">Nuevo hábito</button></div>
   </section>
 
   <section class="block">
@@ -250,10 +273,147 @@ export function initSettings({ root, openBtn, hooks }) {
     await refreshStorage();
   });
 
+  // ----- hábitos -----
+  const SUGGESTIONS = ['Inglés', 'Ejercicio', 'Alimentación', 'Limpieza'];
+  const DAY_NAMES = { 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes', 6: 'Sábado', 0: 'Domingo' };
+  let editingId = null; // id del hábito que se edita; null = uno nuevo
+  let confirmingId = null; // hábito que está esperando la confirmación de "archivar"
+  let chosenDays = new Set();
+
+  const mkBtn = (label, cls, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = cls;
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+
+  const dayRow = $('dayRow');
+  for (const n of WEEK_ORDER) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'daybtn';
+    b.dataset.day = String(n);
+    b.textContent = WEEK_LETTERS[n];
+    b.setAttribute('aria-label', DAY_NAMES[n]);
+    b.addEventListener('click', () => {
+      if (chosenDays.has(n)) chosenDays.delete(n);
+      else chosenDays.add(n);
+      paintDays();
+    });
+    dayRow.append(b);
+  }
+
+  function paintDays() {
+    dayRow.querySelectorAll('.daybtn').forEach((b) =>
+      b.setAttribute('aria-pressed', String(chosenDays.has(Number(b.dataset.day)))),
+    );
+  }
+
+  function renderHabitList() {
+    const active = hooks.getHabits().filter((h) => !h.archivedAt);
+    const list = $('habitList');
+    list.textContent = '';
+    for (const h of active) {
+      const li = document.createElement('li');
+      li.className = 'hitem';
+      const info = document.createElement('div');
+      info.className = 'hinfo';
+      const name = document.createElement('strong');
+      name.textContent = h.name;
+      const days = document.createElement('span');
+      days.className = 'note';
+      days.textContent = formatDays(h.days);
+      info.append(name, days);
+      const actions = document.createElement('div');
+      actions.className = 'hactions';
+      if (confirmingId === h.id) {
+        actions.append(
+          mkBtn('Sí, archivar', 'btn danger small', async () => {
+            await saveHabit(archiveHabit(h, dateKey(new Date())));
+            confirmingId = null;
+            await hooks.onHabitsChanged();
+            renderHabitList();
+          }),
+          mkBtn('No', 'btn small', () => {
+            confirmingId = null;
+            renderHabitList();
+          }),
+        );
+      } else {
+        actions.append(
+          mkBtn('Editar', 'btn small', () => openForm(h)),
+          mkBtn('Archivar', 'btn small', () => {
+            confirmingId = h.id;
+            renderHabitList();
+          }),
+        );
+      }
+      li.append(info, actions);
+      list.append(li);
+    }
+    // Las sugerencias aparecen solo si no hay ningún hábito y el formulario está cerrado.
+    const showSuggest = active.length === 0 && $('habitForm').hidden;
+    $('habitSuggest').hidden = !showSuggest;
+    const chips = $('habitChips');
+    chips.textContent = '';
+    if (showSuggest) for (const s of SUGGESTIONS) chips.append(mkBtn(s, 'chip', () => openForm(null, s)));
+  }
+
+  function openForm(habit, presetName = '') {
+    editingId = habit ? habit.id : null;
+    $('habitName').value = habit ? habit.name : presetName;
+    chosenDays = new Set(habit ? habit.days : []);
+    paintDays();
+    $('habitMsg').textContent = '';
+    $('habitForm').hidden = false;
+    $('habitAdd').hidden = true;
+    renderHabitList();
+    $('habitName').focus();
+  }
+
+  function closeForm() {
+    $('habitForm').hidden = true;
+    $('habitAdd').hidden = false;
+    renderHabitList();
+  }
+
+  $('habitAdd').addEventListener('click', () => openForm(null));
+  $('habitCancel').addEventListener('click', closeForm);
+  $('daysAll').addEventListener('click', () => {
+    chosenDays = new Set(WEEK_ORDER);
+    paintDays();
+  });
+  $('habitForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const check = validateHabitInput({ name: $('habitName').value, days: [...chosenDays] });
+    if (!check.ok) {
+      $('habitMsg').textContent = check.error;
+      return;
+    }
+    const existing = editingId ? hooks.getHabits().find((h) => h.id === editingId) : null;
+    const habit = existing
+      ? { ...existing, name: check.name, days: check.days }
+      : newHabit({ name: check.name, days: check.days }, dateKey(new Date()), crypto.randomUUID());
+    try {
+      await saveHabit(habit);
+      await hooks.onHabitsChanged();
+      closeForm();
+    } catch (err) {
+      console.error(err);
+      $('habitMsg').textContent = 'No se pudo guardar. Probá de nuevo.';
+    }
+  });
+
   function refreshAll() {
     refreshHours();
     refreshLastExport();
     refreshStorage();
+    confirmingId = null;
+    $('habitForm').hidden = true;
+    $('habitAdd').hidden = false;
+    renderHabitList();
     msg('');
   }
 }

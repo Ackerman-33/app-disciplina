@@ -3,7 +3,7 @@ import {
   dateKey, addDays, formatDateLong, countSummary, formatSummary, applyStatus, applyReason,
   togglePriority, setPriorityText, normalizeDay, sanitizeHours,
 } from './logic.js';
-import { getDay, saveDay, getSetting, setSetting } from './db.js';
+import { getDay, saveDay, getSetting, setSetting, getAllHabits } from './db.js';
 import { renderAgenda, refreshRow, markNow } from './agenda.js';
 import { renderPriorities, refreshPriority } from './priorities.js';
 import { initSettings } from './settings.js';
@@ -19,7 +19,8 @@ const state = {
   day: null,        // datos de ese día
   startHour: 6,
   endHour: 24,
-  dirty: false,     // hay cambios sin guardar
+  habits: [],       // todos los hábitos (también los archivados)
+  dirty: false,    // hay cambios sin guardar
   timer: null,      // temporizador del guardado diferido
   nav: 0,           // contador para descartar cargas de días que llegaron tarde
   lastToday: null,  // cuál era "hoy" en la última revisión (para detectar la medianoche)
@@ -179,9 +180,18 @@ async function onHoursChange(startHour, endHour) {
   await setSetting('endHour', endHour);
 }
 
+async function loadHabitData() {
+  state.habits = await getAllHabits();
+}
+
+async function onHabitsChanged() {
+  await loadHabitData();
+}
+
 // Después de importar un archivo: se vuelve a leer todo desde la base de datos.
 async function onDataReplaced() {
   await loadHours();
+  await loadHabitData();
   await showDate(state.date, { scroll: false });
 }
 
@@ -204,6 +214,7 @@ async function init() {
 
   try {
     await loadHours();
+    await loadHabitData();
     state.lastToday = dateKey(new Date());
     await showDate(state.lastToday);
   } catch (err) {
@@ -232,6 +243,8 @@ async function init() {
     hooks: {
       getHours: () => ({ start: state.startHour, end: state.endHour }),
       onHoursChange,
+      getHabits: () => state.habits,
+      onHabitsChanged,
       flush,
       onDataReplaced,
     },
