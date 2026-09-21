@@ -152,7 +152,8 @@ export function initSettings({ root, openBtn, hooks }) {
       const now = new Date();
       const { start, end } = hooks.getHours();
       const days = await getAllDays();
-      const data = buildExport({ days, startHour: start, endHour: end, now });
+      const habits = await getAllHabits();
+      const data = buildExport({ days, habits, startHour: start, endHour: end, now });
       const name = exportFileName(now);
       const file = new File([JSON.stringify(data, null, 2)], name, { type: 'application/json' });
 
@@ -217,8 +218,11 @@ export function initSettings({ root, openBtn, hooks }) {
     const rango = check.count
       ? `del ${formatDateLong(check.first)} al ${formatDateLong(check.last)}`
       : 'sin ningún día con datos';
+    const habitos = check.habitCount
+      ? ` y ${check.habitCount} ${check.habitCount === 1 ? 'hábito' : 'hábitos'}`
+      : '';
     $('importText').textContent =
-      `Este archivo tiene ${check.count} ${check.count === 1 ? 'día' : 'días'} (${rango}). ` +
+      `Este archivo tiene ${check.count} ${check.count === 1 ? 'día' : 'días'}${habitos} (${rango}). ` +
       'Importarlo REEMPLAZA todo lo que hay ahora en este celular.';
     $('importPanel').hidden = false;
   });
@@ -237,6 +241,7 @@ export function initSettings({ root, openBtn, hooks }) {
       await importAll(data);
       await hooks.onDataReplaced();
       refreshHours();
+      renderHabitList();
       msg(`Listo: se importaron ${data.days.length} ${data.days.length === 1 ? 'día' : 'días'}.`);
     } catch (err) {
       console.error(err);
