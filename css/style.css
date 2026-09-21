@@ -1,0 +1,110 @@
+/* ---------- Fuentes (autoalojadas: funcionan sin internet) ---------- */
+@font-face { font-family: 'Bebas Neue'; font-weight: 400; font-style: normal; font-display: swap;
+  src: url('../fonts/bebas-neue-400.woff2') format('woff2'); }
+@font-face { font-family: 'Space Mono'; font-weight: 400; font-style: normal; font-display: swap;
+  src: url('../fonts/space-mono-400.woff2') format('woff2'); }
+@font-face { font-family: 'Space Mono'; font-weight: 700; font-style: normal; font-display: swap;
+  src: url('../fonts/space-mono-700.woff2') format('woff2'); }
+
+/* ---------- Paleta (única fuente de verdad) ---------- */
+:root {
+  --fondo: #0c0b09;
+  --fila: #131210;
+  --fila-alt: #17150f;
+  --linea: #2c2820;
+  --bronce: #c9a24b;
+  --bronce-apagado: #8a7439;
+  --rojo: #8a2b22;
+  --rojo-claro: #c1584a;
+  --hueso: #e8e1d0;
+  --gris: #8f8a78;
+  --pizarra: #5c6b6a;
+
+  --titulo: 'Bebas Neue', Impact, 'Arial Narrow', sans-serif;
+  --mono: 'Space Mono', 'Courier New', monospace;
+  --ancho-max: 640px;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--fondo); color-scheme: dark; }
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--hueso);
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.4;
+  -webkit-tap-highlight-color: transparent;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+/* ---------- Cabecera fija ---------- */
+.top {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--fondo);
+  border-bottom: 1px solid var(--linea);
+  padding-top: env(safe-area-inset-top);
+}
+.brand, .datebar { max-width: var(--ancho-max); margin: 0 auto; }
+.brand {
+  font-family: var(--titulo); font-size: 15px; letter-spacing: .32em;
+  color: var(--bronce-apagado); padding: 10px 16px 0;
+}
+.datebar { display: flex; align-items: stretch; gap: 0; padding: 4px 8px 10px; }
+
+.nav { flex: 0 0 44px; min-height: 48px; padding: 12px 10px; color: var(--bronce); }
+.nav:active { color: var(--hueso); }
+
+.datewrap { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 48px; }
+.date { font-family: var(--titulo); font-size: 26px; letter-spacing: .05em; white-space: nowrap; color: var(--hueso); pointer-events: none; }
+/* El <input type="date"> va encima, invisible: al tocar la fecha se abre el selector nativo. */
+.datepicker { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
+.todaybtn {
+  min-width: 64px; margin-left: 4px; padding: 0 12px;
+  font-family: var(--titulo); font-size: 20px; letter-spacing: .14em;
+  color: var(--bronce); border: 1px solid var(--bronce);
+}
+.todaybtn:active { background: var(--bronce); color: var(--fondo); }
+.todaybtn[aria-current="true"] { color: var(--bronce-apagado); border-color: var(--linea); }
+
+/* ---------- Agenda ---------- */
+.agenda { max-width: var(--ancho-max); margin: 0 auto; }
+
+.row {
+  position: relative;
+  display: flex; align-items: flex-start;
+  min-height: 52px;
+  background: var(--fila);
+  border-bottom: 1px solid var(--linea);
+}
+.row:nth-child(even) { background: var(--fila-alt); }
+
+/* Hora actual: barra vertical de 4 px, bronce, a la izquierda. Nada de fondos alegres. */
+.row.now::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--bronce);
+}
+
+.hour {
+  flex: 0 0 64px; padding: 12px 0 0 16px;
+  font-family: var(--titulo); font-size: 24px; letter-spacing: .06em; line-height: 28px;
+  color: var(--hueso);
+}
+.row.now .hour { padding-left: 16px; }
+
+.slot {
+  flex: 1; min-width: 0;
+  padding: 14px 12px 14px 8px;
+  background: transparent; border: 0; border-radius: 0; outline: 0; resize: none; overflow: hidden;
+  font-family: var(--mono); font-size: 15px; line-height: 1.4; color: var(--hueso);
+  caret-color: var(--bronce);
+}
+.slot::placeholder { color: var(--gris); opacity: .45; }
+.slot:focus { background: rgba(201, 162, 75, .05); box-shadow: inset 0 -1px 0 var(--bronce-apagado); }
+
+.fatal { margin: 24px 16px; padding: 16px; border: 1px solid var(--rojo); color: var(--rojo-claro); }
+
+@media (min-width: 700px) {
+  .row { border-left: 1px solid var(--linea); border-right: 1px solid var(--linea); }
+}
