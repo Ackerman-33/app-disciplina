@@ -87,7 +87,8 @@ Sub-etapas: **1A** base + agenda + PWA + publicación en Pages · **1B** cumplim
 
 ### Estado actual (actualizar al avanzar)
 - **1A, 1B, 1C, 1D, 1E: TERMINADAS y publicadas** en https://ackerman-33.github.io/app-disciplina/ (repo `Ackerman-33/app-disciplina`, rama `main`, Pages desde la raíz).
-- 1A y 1B fueron confirmadas por Simon en su celu. **1C, 1D y 1E las construyó Claude de noche mientras Simon dormía**: verificadas con tests (`node --test`) y en el navegador de la PC (incluido offline con el servidor apagado y ciclo exportar → alterar → importar), pero **pendientes de prueba en el celu**.
+- **ETAPA 1 COMPLETA y confirmada por Simon en su Android (2026-09-21):** 1A a 1E funcionan en su celu (prioridades, Ajustes, exportar/importar, modo avión). 1C-1E las construyó Claude de noche y se verificaron con tests y en el navegador de la PC antes.
+- Siguiente: planificar la Etapa 2 (ver lista "PARA DESPUÉS"). Pendiente menor: decidir si HOY abre mostrando las prioridades primero.
 - Guía de respaldo para Simon: `GUIA-RESPALDO.md`.
 - Al publicar cualquier cambio: correr `node --test`, subir `CACHE_VERSION` en `sw.js` (hoy `disciplina-v7`), commit y `git push`. Si se agrega un archivo a `js/`, `fonts/` o `icons/`, agregarlo a `ASSETS` en `sw.js` (un test lo verifica).
 - Pendiente de decidir con Simon: al abrir HOY la agenda se centra en la hora actual y las prioridades quedan arriba (hay que subir el scroll).
