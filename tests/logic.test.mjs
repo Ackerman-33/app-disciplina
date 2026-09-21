@@ -7,7 +7,7 @@ import {
   togglePriority, setPriorityText, normalizeDay, ROMAN,
   clampHours, sanitizeHours, buildExport, exportFileName, formatBytes,
   WEEK_ORDER, WEEK_LETTERS, weekdayOf, habitTocaEn, validateHabitInput,
-  newHabit, archiveHabit, applyHabitMark, formatDays, sortHabits,
+  newHabit, archiveHabit, applyHabitMark, formatDays, sortHabits, currentStreak, buildMarksIndex,
 } from '../js/logic.js';
 
 test('dateKey usa la fecha LOCAL, no UTC', () => {
@@ -348,4 +348,75 @@ test('sortHabits: por fecha de creación y luego por nombre (sin mutar)', () => 
   const original = [b, a, c];
   assert.deepEqual(sortHabits(original).map((h) => h.name), ['Limpieza', 'Ejercicio', 'Inglés']);
   assert.deepEqual(original.map((h) => h.name), ['Inglés', 'Ejercicio', 'Limpieza']);
+});
+
+// ---------- Etapa 2A: racha ----------
+const TODAY = '2026-09-21'; // lunes
+const d = (n) => addDays(TODAY, n); // d(-1) = ayer
+
+test('currentStreak: días seguidos cumplidos; hoy sin marcar es neutro', () => {
+  const marks = { [d(-3)]: 'done', [d(-2)]: 'done', [d(-1)]: 'done' };
+  assert.equal(currentStreak(daily, marks, TODAY, TODAY), 3);
+});
+
+test('currentStreak: hoy cumplido suma uno', () => {
+  const marks = { [d(-2)]: 'done', [d(-1)]: 'done', [TODAY]: 'done' };
+  assert.equal(currentStreak(daily, marks, TODAY, TODAY), 3);
+});
+
+test('currentStreak: hoy marcado "no cumplido" corta', () => {
+  const marks = { [d(-2)]: 'done', [d(-1)]: 'done', [TODAY]: 'failed' };
+  assert.equal(currentStreak(daily, marks, TODAY, TODAY), 0);
+});
+
+test('currentStreak: un día pasado sin marcar corta', () => {
+  const marks = { [d(-3)]: 'done', [d(-1)]: 'done' }; // falta anteayer
+  assert.equal(currentStreak(daily, marks, TODAY, TODAY), 1);
+  assert.equal(currentStreak(daily, { [d(-2)]: 'done' }, TODAY, TODAY), 0); // ayer sin marcar
+});
+
+test('currentStreak: los días que no tocan se saltean sin cortar', () => {
+  const lmx = { ...daily, days: [1, 3, 5] }; // lunes, miércoles, viernes
+  // lunes 21 (hoy), viernes 18 y miércoles 16 cumplidos; lunes 14 sin marcar => corta ahí
+  const marks = { '2026-09-21': 'done', '2026-09-18': 'done', '2026-09-16': 'done' };
+  assert.equal(currentStreak(lmx, marks, TODAY, TODAY), 3);
+});
+
+test('currentStreak: no cuenta antes de la fecha de creación', () => {
+  const nuevo = { ...daily, createdAt: '2026-09-19' };
+  const marks = { '2026-09-19': 'done', '2026-09-20': 'done', '2026-09-21': 'done' };
+  assert.equal(currentStreak(nuevo, marks, TODAY, TODAY), 3); // 09-18 y antes no existen para este hábito
+});
+
+test('currentStreak: viendo un día pasado se calcula a esa fecha', () => {
+  const marks = { '2026-09-17': 'done', '2026-09-18': 'done', '2026-09-19': 'done', '2026-09-20': 'failed' };
+  assert.equal(currentStreak(daily, marks, '2026-09-19', TODAY), 3);
+  assert.equal(currentStreak(daily, marks, '2026-09-20', TODAY), 0);
+});
+
+test('currentStreak: un día pasado sin marcar corta aunque sea el que se mira', () => {
+  assert.equal(currentStreak(daily, {}, '2026-09-20', TODAY), 0);
+});
+
+test('currentStreak: una fecha futura se calcula a hoy', () => {
+  const marks = { [d(-1)]: 'done' };
+  assert.equal(currentStreak(daily, marks, '2026-09-30', TODAY), 1);
+});
+
+test('currentStreak: hábito archivado no cuenta desde el día de archivo', () => {
+  const arch = { ...daily, archivedAt: '2026-09-20' };
+  const marks = { '2026-09-17': 'done', '2026-09-18': 'done', '2026-09-19': 'done' };
+  assert.equal(currentStreak(arch, marks, '2026-09-19', TODAY), 3);
+});
+
+test('buildMarksIndex arma marcas por hábito y fecha', () => {
+  const days = [
+    { date: '2026-09-20', habits: { h1: 'done', h2: 'failed' } },
+    { date: '2026-09-21', habits: { h1: 'done' } },
+    { date: '2026-09-19' }, // ficha vieja sin habits
+  ];
+  assert.deepEqual(buildMarksIndex(days), {
+    h1: { '2026-09-20': 'done', '2026-09-21': 'done' },
+    h2: { '2026-09-20': 'failed' },
+  });
 });

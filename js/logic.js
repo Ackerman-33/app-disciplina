@@ -232,3 +232,35 @@ export function formatDays(days) {
   if (days.length === 7) return 'Todos los días';
   return WEEK_ORDER.filter((n) => days.includes(n)).map((n) => WEEK_LETTERS[n]).join(' ');
 }
+
+// Racha: se cuenta hacia atrás SOLO sobre los días que el hábito "toca".
+//  - día que toca y cumplido: suma 1
+//  - día que toca y "no cumplido", o pasado sin marcar: corta
+//  - hoy sin marcar: neutro (el día no terminó)
+// `marks` es { 'YYYY-MM-DD': 'done'|'failed' } de UN hábito.
+export function currentStreak(habit, marks, asOfKey, todayKey) {
+  let key = asOfKey > todayKey ? todayKey : asOfKey;
+  let streak = 0;
+  while (key >= habit.createdAt) {
+    if (habitTocaEn(habit, key)) {
+      const mark = marks[key];
+      if (mark === 'done') streak++;
+      else if (mark === undefined && key === todayKey) {
+        // hoy sin marcar todavía: no suma ni corta
+      } else break;
+    }
+    key = addDays(key, -1);
+  }
+  return streak;
+}
+
+// De las fichas de día a { [habitId]: { [fecha]: marca } }, para calcular rachas sin releer la base.
+export function buildMarksIndex(days) {
+  const index = {};
+  for (const day of days) {
+    for (const [id, mark] of Object.entries(day.habits || {})) {
+      (index[id] ||= {})[day.date] = mark;
+    }
+  }
+  return index;
+}
