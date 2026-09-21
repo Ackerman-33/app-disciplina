@@ -7,7 +7,7 @@ import {
   togglePriority, setPriorityText, normalizeDay, ROMAN,
   clampHours, sanitizeHours, buildExport, exportFileName, formatBytes,
   WEEK_ORDER, WEEK_LETTERS, weekdayOf, habitTocaEn, validateHabitInput,
-  newHabit, archiveHabit, applyHabitMark, formatDays,
+  newHabit, archiveHabit, applyHabitMark, formatDays, sortHabits,
 } from '../js/logic.js';
 
 test('dateKey usa la fecha LOCAL, no UTC', () => {
@@ -339,4 +339,13 @@ test('buildExport v2 incluye hábitos ordenados por fecha de creación', () => {
   assert.equal(out.schemaVersion, 2);
   assert.deepEqual(out.habits.map((h) => h.id), ['a', 'b']);
   assert.equal(validateImport(out).ok, true);
+});
+
+test('sortHabits: por fecha de creación y luego por nombre (sin mutar)', () => {
+  const a = { id: 'z', name: 'Ejercicio', createdAt: '2026-09-21' };
+  const b = { id: 'y', name: 'Inglés', createdAt: '2026-09-21' };
+  const c = { id: 'x', name: 'Limpieza', createdAt: '2026-09-15' };
+  const original = [b, a, c];
+  assert.deepEqual(sortHabits(original).map((h) => h.name), ['Limpieza', 'Ejercicio', 'Inglés']);
+  assert.deepEqual(original.map((h) => h.name), ['Inglés', 'Ejercicio', 'Limpieza']);
 });

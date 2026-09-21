@@ -1,11 +1,13 @@
 // Director de orquesta: estado de la pantalla, carga/guardado del día, botones.
 import {
   dateKey, addDays, formatDateLong, countSummary, formatSummary, applyStatus, applyReason,
-  togglePriority, setPriorityText, normalizeDay, sanitizeHours,
+  togglePriority, setPriorityText, normalizeDay, sanitizeHours, habitTocaEn, applyHabitMark,
+  sortHabits,
 } from './logic.js';
 import { getDay, saveDay, getSetting, setSetting, getAllHabits } from './db.js';
 import { renderAgenda, refreshRow, markNow } from './agenda.js';
 import { renderPriorities, refreshPriority } from './priorities.js';
+import { renderHabits, refreshHabit } from './habits.js';
 import { initSettings } from './settings.js';
 import { ICONS } from './icons.js';
 
@@ -13,6 +15,7 @@ const $ = (id) => document.getElementById(id);
 const pad2 = (n) => String(n).padStart(2, '0');
 const agendaEl = $('agenda');
 const priosEl = $('prios');
+const habitsEl = $('habits');
 
 const state = {
   date: null,       // día que se está viendo, "YYYY-MM-DD"
@@ -82,6 +85,21 @@ function onPriorityToggle(i) {
   scheduleSave();
 }
 
+// Solo los hábitos que "tocan" en la fecha que se está viendo.
+function visibleHabits() {
+  return state.habits.filter((h) => habitTocaEn(h, state.date));
+}
+
+function renderHabitBlock() {
+  renderHabits(habitsEl, { habits: visibleHabits(), marks: state.day.habits, onMark: onHabitMark });
+}
+
+function onHabitMark(id, mark) {
+  state.day.habits = applyHabitMark(state.day.habits, id, mark);
+  refreshHabit(habitsEl, id, state.day.habits[id] ?? null);
+  scheduleSave();
+}
+
 // Resumen en vivo: se recalcula solo con cada cambio, sin esperar al cierre del día.
 function updateSummary() {
   const c = countSummary(state.day, state.startHour, state.endHour);
@@ -128,6 +146,7 @@ function render(scroll) {
     onText: onPriorityText,
     onToggle: onPriorityToggle,
   });
+  renderHabitBlock();
   renderAgenda(agendaEl, {
     day: state.day,
     startHour: state.startHour,
@@ -181,11 +200,12 @@ async function onHoursChange(startHour, endHour) {
 }
 
 async function loadHabitData() {
-  state.habits = await getAllHabits();
+  state.habits = sortHabits(await getAllHabits());
 }
 
 async function onHabitsChanged() {
   await loadHabitData();
+  renderHabitBlock();
 }
 
 // Después de importar un archivo: se vuelve a leer todo desde la base de datos.

@@ -137,6 +137,16 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .pbox[aria-pressed="true"] { border-color: var(--bronce-apagado); }
 .pbox[aria-pressed="true"] svg { opacity: 1; }
 
+/* ---------- Hábitos de hoy ---------- */
+.habits { max-width: var(--ancho-max); margin: 0 auto; border-bottom: 1px solid var(--bronce-apagado); }
+.habit {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+  min-height: 56px; padding-left: 16px; background: var(--fila); border-top: 1px solid var(--linea);
+}
+.habit:nth-of-type(even) { background: var(--fila-alt); }
+.hname { padding: 12px 8px 12px 0; font-size: 15px; overflow-wrap: anywhere; }
+.hmarks { display: flex; padding-right: 4px; }
+
 /* ---------- Marcas de cumplimiento ---------- */
 .marks { display: flex; padding: 4px 4px 0 0; }
 .mark {

@@ -133,6 +133,10 @@ export function sanitizeHours(settings) {
   return clampHours(s, e, 'start');
 }
 
+// Orden estable para mostrar y exportar: por fecha de creación y, si empatan, por nombre.
+export const sortHabits = (habits) =>
+  [...habits].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name, 'es'));
+
 export function buildExport({ days, habits = [], startHour, endHour, now }) {
   return {
     app: APP_ID,
@@ -140,7 +144,7 @@ export function buildExport({ days, habits = [], startHour, endHour, now }) {
     exportedAt: now.toISOString(),
     settings: { startHour, endHour },
     days: [...days].sort((a, b) => a.date.localeCompare(b.date)),
-    habits: [...habits].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name)),
+    habits: sortHabits(habits),
   };
 }
 
