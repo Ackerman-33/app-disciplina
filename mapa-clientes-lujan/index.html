@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+<meta charset="utf-8">
+<title>Mapa de Clientes Luján</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f6feb">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root { --azul:#1f6feb; --rojo:#d1242f; --texto:#1b1f24; --borde:#d0d7de; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; height:100%; overflow:hidden; overscroll-behavior:none;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; font-size:18px; color:var(--texto); }
+  #map { position:fixed; inset:0; background:#e8e4da; }
+
+  /* Barra de abajo */
+  #barra { position:fixed; left:0; right:0; bottom:0; z-index:1100; background:#fff;
+    border-top:1px solid var(--borde); padding:8px 8px calc(8px + env(safe-area-inset-bottom)); }
+  .fila { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
+  .fila::-webkit-scrollbar { display:none; }
+  .fila + .fila { margin-top:8px; }
+  button { font:inherit; font-weight:600; min-height:52px; padding:0 16px; border-radius:12px;
+    border:2px solid var(--borde); background:#f6f8fa; color:var(--texto); white-space:nowrap; flex:0 0 auto; touch-action:manipulation; }
+  button:active { filter:brightness(.92); }
+  .barrio.activo { background:var(--azul); border-color:var(--azul); color:#fff; }
+  .accion { flex:1 1 0; min-width:0; padding:0 6px; font-size:16px; }
+  #btnUbic { flex:0 0 60px; font-size:24px; }
+  .primario { background:var(--azul); border-color:var(--azul); color:#fff; }
+  .peligro { color:var(--rojo); border-color:var(--rojo); background:#fff; }
+
+  /* Ventanas (formulario / ficha) */
+  .velo { position:fixed; inset:0; z-index:1200; background:rgba(0,0,0,.45); display:none; align-items:flex-end; }
+  .velo.abierto { display:flex; }
+  .hoja { background:#fff; width:100%; max-height:92%; overflow-y:auto; border-radius:18px 18px 0 0;
+    padding:18px 16px calc(18px + env(safe-area-inset-bottom)); }
+  .hoja h2 { margin:0 0 12px; font-size:24px; }
+  label { display:block; font-weight:600; margin:12px 0 4px; }
+  input, textarea { width:100%; font:inherit; padding:12px; border:2px solid var(--borde); border-radius:10px; background:#fff; color:var(--texto); }
+  input:focus, textarea:focus { outline:none; border-color:var(--azul); }
+  textarea { min-height:90px; resize:vertical; }
+  .botones { display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; }
+  .botones button { flex:1 1 40%; }
+  .dato { margin:8px 0; word-break:break-word; }
+  .dato small { display:block; color:#57606a; font-size:15px; }
+  .dato a { color:var(--azul); font-weight:600; }
+
+  /* Pines */
+  .pin { background:none; border:none; }
+  .pin svg { display:block; filter:drop-shadow(0 2px 2px rgba(0,0,0,.45)); }
+  .etiqueta { background:#fff; border:1px solid #888; border-radius:6px; font-weight:700; font-size:14px; padding:2px 6px; box-shadow:none; }
+  .etiqueta::before { display:none; }
+  .lejos .etiqueta { display:none; }
+  .leaflet-control-attribution { font-size:11px; }
+
+  #aviso { position:fixed; left:12px; right:12px; top:calc(12px + env(safe-area-inset-top)); z-index:1300;
+    background:#1b1f24; color:#fff; padding:14px 16px; border-radius:12px; text-align:center; display:none; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="barra">
+  <div class="fila" id="barrios"></div>
+  <div class="fila">
+    <button class="accion" id="btnUbic" aria-label="Mi ubicación">📍</button>
+    <button class="accion" id="btnBarrio">+ barrio</button>
+    <button class="accion" id="btnExp">Exportar</button>
+    <button class="accion" id="btnImp">Importar</button>
+  </div>
+</div>
+
+<input type="file" id="archivo" accept="application/json,.json" hidden>
+
+<!-- Formulario de cliente -->
+<div class="velo" id="vFormulario">
+  <form class="hoja" id="formCliente" autocomplete="off">
+    <h2 id="tituloForm">Nuevo cliente</h2>
+    <label for="fNombre">Nombre</label>
+    <input id="fNombre" required maxlength="80">
+    <label for="fDir">Dirección</label>
+    <input id="fDir" maxlength="120">
+    <label for="fTel">Teléfono</label>
+    <input id="fTel" type="tel" inputmode="tel" maxlength="40">
+    <label for="fNota">Nota</label>
+    <textarea id="fNota" maxlength="500"></textarea>
+    <div class="botones">
+      <button type="button" id="fCancelar">Cancelar</button>
+      <button type="submit" class="primario">Guardar</button>
+    </div>
+  </form>
+</div>
+
+<!-- Formulario de barrio -->
+<div class="velo" id="vBarrio">
+  <form class="hoja" id="formBarrio" autocomplete="off">
+    <h2>Nuevo barrio</h2>
+    <p style="margin:0">Se guarda con lo que estás viendo ahora en el mapa (centro y zoom).</p>
+    <label for="bNombre">Nombre del barrio</label>
+    <input id="bNombre" required maxlength="40">
+    <div class="botones">
+      <button type="button" id="bCancelar">Cancelar</button>
+      <button type="submit" class="primario">Guardar</button>
+    </div>
+  </form>
+</div>
+
+<!-- Ficha de cliente -->
+<div class="velo" id="vFicha">
+  <div class="hoja">
+    <h2 id="kNombre"></h2>
+    <div class="dato" id="kDir"></div>
+    <div class="dato" id="kTel"></div>
+    <div class="dato" id="kNota"></div>
+    <div class="botones">
+      <button class="primario" id="kMaps" style="flex-basis:100%">🗺 Ir en Maps</button>
+      <button id="kEditar">✏ Editar</button>
+      <button class="peligro" id="kBorrar">🗑 Borrar</button>
+      <button id="kCerrar" style="flex-basis:100%">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div id="aviso" role="status"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- Datos (localStorage) ---------- */
+  var LS_CLIENTES = 'mcl_clientes';
+  var LS_BARRIOS = 'mcl_barrios';
+  // Las coordenadas de Ameghino son aproximadas: parate en el barrio y tocá "+ barrio" con el mismo nombre para corregirlas.
+  var BARRIOS_INICIALES = [
+    { id: 'centro', nombre: 'Luján centro', lat: -34.5703, lng: -59.1050, zoom: 15 },
+    { id: 'ameghino', nombre: 'Barrio Ameghino', lat: -34.5600, lng: -59.1250, zoom: 15 }
+  ];
+
+  function leer(clave, porDefecto) {
+    try {
+      var v = JSON.parse(localStorage.getItem(clave));
+      return Array.isArray(v) ? v : porDefecto;
+    } catch (e) { return porDefecto; }
+  }
+  function guardar(clave, valor) {
+    try { localStorage.setItem(clave, JSON.stringify(valor)); }
+    catch (e) { aviso('No pude guardar en el celu. Revisá que haya espacio y que no estés en pestaña privada.'); }
+  }
+  function nuevoId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+  var clientes = leer(LS_CLIENTES, []);
+  var barrios = leer(LS_BARRIOS, null);
+  if (!barrios || !barrios.length) { barrios = BARRIOS_INICIALES.slice(); guardar(LS_BARRIOS, barrios); }
+
+  /* ---------- Utilidades ---------- */
+  var $ = function (id) { return document.getElementById(id); };
+  var avisoTimer;
+  function aviso(txt) {
+    var a = $('aviso');
+    a.textContent = txt; a.style.display = 'block';
+    clearTimeout(avisoTimer);
+    avisoTimer = setTimeout(function () { a.style.display = 'none'; }, 3500);
+  }
+  function abrir(id) { $(id).classList.add('abierto'); }
+  function cerrar(id) { $(id).classList.remove('abierto'); }
+  function hayVentana() { return document.querySelector('.velo.abierto') !== null; }
+  function fechaLocal() {
+    var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+
+  /* ---------- Mapa ---------- */
+  var map = L.map('map', { zoomControl: false, attributionControl: false, tap: true })
+    .setView([-34.5703, -59.1050], 14);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  L.control.attribution({ position: 'topright', prefix: false })
+    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>').addTo(map);
+
+  var capa = L.layerGroup().addTo(map);
+  var miPunto = null;
+
+  function iconoPin() {
+    return L.divIcon({
+      className: 'pin', iconSize: [36, 46], iconAnchor: [18, 46], tooltipAnchor: [0, -40],
+      html: '<svg width="36" height="46" viewBox="0 0 36 46"><path d="M18 1C8.6 1 1 8.4 1 17.6 1 30 18 45 18 45s17-15 17-27.4C35 8.4 27.4 1 18 1z" fill="#d1242f" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17.5" r="6.5" fill="#fff"/></svg>'
+    });
+  }
+
+  function dibujar() {
+    capa.clearLayers();
+    clientes.forEach(function (c) {
+      var m = L.marker([c.lat, c.lng], { icon: iconoPin() })
+        .bindTooltip(c.nombre, { permanent: true, direction: 'bottom', offset: [0, 0], className: 'etiqueta' });
+      m.on('click', function () { mostrarFicha(c.id); });
+      m.addTo(capa);
+    });
+  }
+  function ajustarEtiquetas() {
+    $('map').classList.toggle('lejos', map.getZoom() < 15);
+  }
+  map.on('zoomend', ajustarEtiquetas);
+  ajustarEtiquetas();
+
+  /* ---------- Barrios ---------- */
+  var barrioActivo = null;
+  function dibujarBarrios() {
+    var fila = $('barrios');
+    fila.textContent = '';
+    barrios.forEach(function (b) {
+      var btn = document.createElement('button');
+      btn.className = 'barrio' + (b.id === barrioActivo ? ' activo' : '');
+      btn.textContent = b.nombre;
+      var timer = null, largo = false;
+      btn.addEventListener('pointerdown', function () {
+        largo = false;
+        timer = setTimeout(function () {
+          largo = true;
+          if (confirm('¿Borrar el barrio "' + b.nombre + '"? (Los clientes no se tocan)')) {
+            barrios = barrios.filter(function (x) { return x.id !== b.id; });
+            guardar(LS_BARRIOS, barrios);
+            if (barrioActivo === b.id) barrioActivo = null;
+            dibujarBarrios();
+          }
+        }, 700);
+      });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (ev) {
+        btn.addEventListener(ev, function () { clearTimeout(timer); });
+      });
+      btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+      btn.addEventListener('click', function () {
+        if (largo) return;
+        barrioActivo = b.id;
+        map.flyTo([b.lat, b.lng], b.zoom || 15, { duration: 1.2 });
+        dibujarBarrios();
+      });
+      fila.appendChild(btn);
+    });
+  }
+
+  $('btnBarrio').addEventListener('click', function () {
+    $('bNombre').value = '';
+    abrir('vBarrio');
+    setTimeout(function () { $('bNombre').focus(); }, 50);
+  });
+  $('bCancelar').addEventListener('click', function () { cerrar('vBarrio'); });
+  $('formBarrio').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var nombre = $('bNombre').value.trim();
+    if (!nombre) return;
+    var c = map.getCenter();
+    var existente = barrios.filter(function (b) { return b.nombre.toLowerCase() === nombre.toLowerCase(); })[0];
+    if (existente) {
+      if (!confirm('Ya existe "' + existente.nombre + '". ¿Actualizar su posición a la que ves ahora?')) return;
+      existente.lat = c.lat; existente.lng = c.lng; existente.zoom = map.getZoom();
+      barrioActivo = existente.id;
+    } else {
+      var nuevo = { id: nuevoId(), nombre: nombre, lat: c.lat, lng: c.lng, zoom: map.getZoom() };
+      barrios.push(nuevo);
+      barrioActivo = nuevo.id;
+    }
+    guardar(LS_BARRIOS, barrios);
+    cerrar('vBarrio');
+    dibujarBarrios();
+    aviso('Barrio guardado');
+  });
+
+  /* ---------- Formulario de cliente ---------- */
+  var editando = null;      // cliente en edición, o null si es nuevo
+  var posNueva = null;      // {lat, lng} para un cliente nuevo
+
+  function abrirFormulario(cliente, pos) {
+    editando = cliente || null;
+    posNueva = pos || null;
+    $('tituloForm').textContent = cliente ? 'Editar cliente' : 'Nuevo cliente';
+    $('fNombre').value = cliente ? cliente.nombre : '';
+    $('fDir').value = cliente ? cliente.direccion : '';
+    $('fTel').value = cliente ? cliente.telefono : '';
+    $('fNota').value = cliente ? cliente.nota : '';
+    abrir('vFormulario');
+    setTimeout(function () { $('fNombre').focus(); }, 50);
+  }
+  $('fCancelar').addEventListener('click', function () { cerrar('vFormulario'); });
+  $('formCliente').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var nombre = $('fNombre').value.trim();
+    if (!nombre) return;
+    var datos = {
+      nombre: nombre,
+      direccion: $('fDir').value.trim(),
+      telefono: $('fTel').value.trim(),
+      nota: $('fNota').value.trim()
+    };
+    if (editando) {
+      Object.assign(editando, datos);
+    } else {
+      clientes.push(Object.assign({ id: nuevoId(), lat: posNueva.lat, lng: posNueva.lng }, datos));
+    }
+    guardar(LS_CLIENTES, clientes);
+    cerrar('vFormulario');
+    dibujar();
+    aviso('Cliente guardado');
+  });
+
+  // Tocar un punto del mapa => cliente nuevo ahí
+  map.on('click', function (e) {
+    if (hayVentana()) return;
+    abrirFormulario(null, { lat: e.latlng.lat, lng: e.latlng.lng });
+  });
+
+  // Mi ubicación
+  $('btnUbic').addEventListener('click', function () {
+    if (!navigator.geolocation) { aviso('Este celu no permite usar la ubicación.'); return; }
+    aviso('Buscando tu ubicación…');
+    navigator.geolocation.getCurrentPosition(function (p) {
+      var pos = { lat: p.coords.latitude, lng: p.coords.longitude };
+      map.setView([pos.lat, pos.lng], 18);
+      if (miPunto) miPunto.setLatLng([pos.lat, pos.lng]);
+      else miPunto = L.circleMarker([pos.lat, pos.lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#1f6feb', fillOpacity: 1, interactive: false }).addTo(map);
+      abrirFormulario(null, pos);
+    }, function (err) {
+      aviso(err.code === 1
+        ? 'No me diste permiso para la ubicación. Activalo en los permisos del navegador.'
+        : 'No pude encontrar tu ubicación. Probá de nuevo al aire libre.');
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  });
+
+  /* ---------- Ficha ---------- */
+  var fichaId = null;
+  function mostrarFicha(id) {
+    var c = clientes.filter(function (x) { return x.id === id; })[0];
+    if (!c) return;
+    fichaId = id;
+    $('kNombre').textContent = c.nombre;
+    campo('kDir', 'Dirección', c.direccion);
+    campo('kNota', 'Nota', c.nota);
+    var t = $('kTel'); t.textContent = '';
+    if (c.telefono) {
+      var s = document.createElement('small'); s.textContent = 'Teléfono'; t.appendChild(s);
+      var a = document.createElement('a');
+      a.href = 'tel:' + c.telefono.replace(/[^\d+]/g, '');
+      a.textContent = '📞 ' + c.telefono;
+      t.appendChild(a);
+    }
+    abrir('vFicha');
+  }
+  function campo(id, titulo, valor) {
+    var el = $(id); el.textContent = '';
+    if (!valor) return;
+    var s = document.createElement('small'); s.textContent = titulo;
+    el.appendChild(s);
+    el.appendChild(document.createTextNode(valor));
+  }
+  function clienteActual() { return clientes.filter(function (x) { return x.id === fichaId; })[0]; }
+  $('kCerrar').addEventListener('click', function () { cerrar('vFicha'); });
+  $('kMaps').addEventListener('click', function () {
+    var c = clienteActual(); if (!c) return;
+    window.open('https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lng, '_blank', 'noopener');
+  });
+  $('kEditar').addEventListener('click', function () {
+    var c = clienteActual(); if (!c) return;
+    cerrar('vFicha');
+    abrirFormulario(c);
+  });
+  $('kBorrar').addEventListener('click', function () {
+    var c = clienteActual(); if (!c) return;
+    if (!confirm('¿Borrar a "' + c.nombre + '"? No se puede deshacer.')) return;
+    clientes = clientes.filter(function (x) { return x.id !== c.id; });
+    guardar(LS_CLIENTES, clientes);
+    cerrar('vFicha');
+    dibujar();
+    aviso('Cliente borrado');
+  });
+
+  // Tocar el fondo oscuro cierra la ficha
+  $('vFicha').addEventListener('click', function (e) { if (e.target === this) cerrar('vFicha'); });
+
+  /* ---------- Exportar / Importar ---------- */
+  $('btnExp').addEventListener('click', function () {
+    var data = { app: 'mapa-clientes-lujan', version: 1, exportado: fechaLocal(), clientes: clientes, barrios: barrios };
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'clientes-lujan-' + fechaLocal() + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    aviso('Listo: ' + clientes.length + ' clientes exportados. Fijate en Descargas.');
+  });
+
+  $('btnImp').addEventListener('click', function () { $('archivo').value = ''; $('archivo').click(); });
+  $('archivo').addEventListener('change', function () {
+    var f = this.files[0];
+    if (!f) return;
+    var lector = new FileReader();
+    lector.onload = function () {
+      try {
+        var d = JSON.parse(lector.result);
+        var lc = Array.isArray(d) ? d : d.clientes;
+        var lb = Array.isArray(d) ? [] : (d.barrios || []);
+        if (!Array.isArray(lc)) throw new Error('formato');
+        var okC = lc.filter(function (c) {
+          return c && typeof c.nombre === 'string' && isFinite(c.lat) && isFinite(c.lng);
+        }).map(function (c) {
+          return { id: String(c.id || nuevoId()), nombre: c.nombre, direccion: String(c.direccion || ''), telefono: String(c.telefono || ''), nota: String(c.nota || ''), lat: +c.lat, lng: +c.lng };
+        });
+        var okB = (Array.isArray(lb) ? lb : []).filter(function (b) {
+          return b && typeof b.nombre === 'string' && isFinite(b.lat) && isFinite(b.lng);
+        }).map(function (b) {
+          return { id: String(b.id || nuevoId()), nombre: b.nombre, lat: +b.lat, lng: +b.lng, zoom: +b.zoom || 15 };
+        });
+        if (!okC.length && !okB.length) throw new Error('vacio');
+        if (!confirm('El archivo trae ' + okC.length + ' clientes y ' + okB.length + ' barrios.\nSe suman a los que ya tenés (si uno ya existe, se actualiza). ¿Seguimos?')) return;
+        mezclar(clientes, okC); mezclar(barrios, okB);
+        guardar(LS_CLIENTES, clientes); guardar(LS_BARRIOS, barrios);
+        dibujar(); dibujarBarrios();
+        aviso('Importado: ' + okC.length + ' clientes y ' + okB.length + ' barrios.');
+      } catch (err) {
+        aviso('Ese archivo no sirve. Tiene que ser un .json exportado desde esta app.');
+      }
+    };
+    lector.readAsText(f);
+  });
+  function mezclar(destino, nuevos) {
+    nuevos.forEach(function (n) {
+      var i = destino.findIndex(function (x) { return x.id === n.id; });
+      if (i >= 0) destino[i] = n; else destino.push(n);
+    });
+  }
+
+  /* ---------- Arranque ---------- */
+  dibujar();
+  dibujarBarrios();
+  // Que la barra no tape el mapa: avisar a Leaflet si cambia el tamaño
+  window.addEventListener('resize', function () { map.invalidateSize(); });
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js').catch(function () {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
