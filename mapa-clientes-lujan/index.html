@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Mapa de Clientes Luján</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#1f6feb">
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="manifest" href="./manifest.json">
@@ -57,7 +57,7 @@
   .lejos .etiqueta { display:none; }
   .etq-barrio { background:rgba(255,255,255,.78); border:none; box-shadow:none; color:#1b1f24; font-weight:700; font-size:12px; padding:1px 4px; }
   .etq-barrio::before { display:none; }
-  .muylejos .etq-barrio { display:none; }
+  .muylejos .etq-barrio, .muycerca .etq-barrio { display:none; }
   .leaflet-control-attribution { font-size:11px; }
   #lItems button { display:flex; justify-content:space-between; width:100%; margin-top:8px; text-align:left; }
   #lItems small { font-weight:400; color:#57606a; align-self:center; }
@@ -196,9 +196,9 @@
   /* ---------- Mapa ---------- */
   var map = L.map('map', { zoomControl: false, attributionControl: false, tap: true })
     .setView([-34.5703, -59.1050], 14);
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(map);
   L.control.attribution({ position: 'topright', prefix: false })
-    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v3').addTo(map);
+    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v4').addTo(map);
 
   var capa = L.layerGroup().addTo(map);
   var miPunto = null;
@@ -222,6 +222,7 @@
   function ajustarEtiquetas() {
     $('map').classList.toggle('lejos', map.getZoom() < 15);
     $('map').classList.toggle('muylejos', map.getZoom() < 14);
+    $('map').classList.toggle('muycerca', map.getZoom() >= 17);
   }
   map.on('zoomend', ajustarEtiquetas);
   ajustarEtiquetas();
@@ -238,6 +239,13 @@
       if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) d = !d;
     }
     return d;
+  }
+  function normal(t) {
+    return t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^barrio\s+/, '').trim();
+  }
+  function zonaPorNombre(nombre) {
+    var n = normal(nombre);
+    return ZONAS.filter(function (z) { return normal(z.n) === n; })[0];
   }
   function zonaElegida() { return ZONAS.filter(function (z) { return z.n === seleccion; })[0]; }
   function clientesVisibles() {
@@ -336,6 +344,8 @@
       btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
       btn.addEventListener('click', function () {
         if (largo) return;
+        var z = zonaPorNombre(b.nombre);
+        if (z) { barrioActivo = null; elegirZona(z.n); return; }
         barrioActivo = b.id;
         map.flyTo([b.lat, b.lng], b.zoom || 15, { duration: 1.2 });
         dibujarBarrios();
@@ -404,15 +414,28 @@
     }
     guardar(LS_CLIENTES, clientes);
     cerrar('vFormulario');
-    dibujar();
-    aviso('Cliente guardado');
+    var zona = zonaElegida();
+    var guardado = editando || clientes[clientes.length - 1];
+    if (zona && !dentro(guardado.lat, guardado.lng, zona.p)) {
+      verTodas();
+      aviso('Cliente guardado. Está fuera de ' + zona.n + ', por eso volví a mostrar todos.');
+    } else {
+      dibujar();
+      aviso('Cliente guardado');
+    }
   });
 
   // Tocar un punto del mapa => cliente nuevo ahí
+  // Espera un instante: si era un doble toque (zoom) o un arrastre, no abre el formulario.
+  var tapTimer = null;
   map.on('click', function (e) {
     if (hayVentana()) return;
-    abrirFormulario(null, { lat: e.latlng.lat, lng: e.latlng.lng });
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(function () {
+      if (!hayVentana()) abrirFormulario(null, { lat: e.latlng.lat, lng: e.latlng.lng });
+    }, 300);
   });
+  map.on('dblclick zoomstart movestart', function () { clearTimeout(tapTimer); });
 
   // Mi ubicación
   $('btnUbic').addEventListener('click', function () {
@@ -461,7 +484,7 @@
   $('kCerrar').addEventListener('click', function () { cerrar('vFicha'); });
   $('kMaps').addEventListener('click', function () {
     var c = clienteActual(); if (!c) return;
-    window.open('https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lng, '_blank', 'noopener');
+    window.open('https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + c.lat + ',' + c.lng, '_blank', 'noopener');
   });
   $('kEditar').addEventListener('click', function () {
     var c = clienteActual(); if (!c) return;
@@ -490,9 +513,22 @@
     a.download = 'clientes-lujan-' + fechaLocal() + '.json';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    marcarExportado();
+    $('btnExp').classList.remove('primario');
     aviso('Listo: ' + clientes.length + ' clientes exportados. Fijate en Descargas.');
   });
 
+  function marcarExportado() { try { localStorage.setItem('mcl_ultimo_export', String(Date.now())); } catch (e) {} }
+  function recordarBackup() {
+    if (!clientes.length) return;
+    var t = 0;
+    try { t = +localStorage.getItem('mcl_ultimo_export') || 0; } catch (e) {}
+    var dias = t ? Math.floor((Date.now() - t) / 86400000) : null;
+    if (dias === null || dias >= 7) {
+      $('btnExp').classList.add('primario');
+      aviso(dias === null ? 'Todavía no hiciste backup. Tocá Exportar.' : 'Hace ' + dias + ' días que no hacés backup. Tocá Exportar.');
+    }
+  }
   $('btnImp').addEventListener('click', function () { $('archivo').value = ''; $('archivo').click(); });
   $('archivo').addEventListener('change', function () {
     var f = this.files[0];
@@ -536,6 +572,8 @@
   /* ---------- Arranque ---------- */
   dibujar();
   dibujarBarrios();
+  recordarBackup();
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   // Que la barra no tape el mapa: avisar a Leaflet si cambia el tamaño
   window.addEventListener('resize', function () { map.invalidateSize(); });
 
