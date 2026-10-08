@@ -59,6 +59,11 @@
   .etq-barrio::before { display:none; }
   .muylejos .etq-barrio, .muycerca .etq-barrio { display:none; }
   .leaflet-control-attribution { font-size:11px; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chips button { flex:1 1 auto; min-width:58px; padding:0 10px; }
+  .chips button.sel { background:var(--azul); border-color:var(--azul); color:#fff; }
+  .punto { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:8px; vertical-align:middle; }
+  #btnInfo { max-width:55vw; overflow:hidden; text-overflow:ellipsis; }
   #lItems button { display:flex; justify-content:space-between; width:100%; margin-top:8px; text-align:left; }
   #lItems small { font-weight:400; color:#57606a; align-self:center; }
   input[type=search] { -webkit-appearance:none; appearance:none; }
@@ -119,10 +124,27 @@
 <div class="velo" id="vLista">
   <div class="hoja">
     <h2>Barrios</h2>
-    <input id="lBuscar" type="search" placeholder="Buscar barrio…" autocomplete="off">
+    <div class="dato" id="lResumen"></div>
+    <div class="chips" id="lFiltros"></div>
+    <input id="lBuscar" type="search" placeholder="Buscar barrio…" autocomplete="off" style="margin-top:10px">
     <div id="lItems"></div>
     <div class="botones">
       <button id="lCerrar" style="flex-basis:100%">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Día y estado de un barrio -->
+<div class="velo" id="vZona">
+  <div class="hoja">
+    <h2 id="zNombre"></h2>
+    <div class="dato" id="zInfo"></div>
+    <label>Día de visita</label>
+    <div class="chips" id="zDias"></div>
+    <label>Estado</label>
+    <div class="chips" id="zEstados"></div>
+    <div class="botones">
+      <button class="primario" id="zCerrar" style="flex-basis:100%">Listo</button>
     </div>
   </div>
 </div>
@@ -172,6 +194,14 @@
   }
   function nuevoId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
+  var LS_ZONAS = 'mcl_zonas_info';
+  function leerObj(clave) {
+    try {
+      var v = JSON.parse(localStorage.getItem(clave));
+      return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    } catch (e) { return {}; }
+  }
+  var zonasInfo = leerObj(LS_ZONAS);   // { "Nombre del barrio": { dia: 0-6|null, estado, fecha } }
   var clientes = leer(LS_CLIENTES, []);
   var barrios = leer(LS_BARRIOS, null);
   if (!barrios || !barrios.length) { barrios = BARRIOS_INICIALES.slice(); guardar(LS_BARRIOS, barrios); }
@@ -198,7 +228,7 @@
     .setView([-34.5703, -59.1050], 14);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(map);
   L.control.attribution({ position: 'topright', prefix: false })
-    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v4').addTo(map);
+    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v5').addTo(map);
 
   var capa = L.layerGroup().addTo(map);
   var miPunto = null;
@@ -221,7 +251,8 @@
   }
   function ajustarEtiquetas() {
     $('map').classList.toggle('lejos', map.getZoom() < 15);
-    $('map').classList.toggle('muylejos', map.getZoom() < 14);
+    var pocos = (filtroDia !== null && filtroDia !== undefined) || !!seleccion;   // con pocos barrios a la vista, los nombres entran
+    $('map').classList.toggle('muylejos', map.getZoom() < 14 && !pocos);
     $('map').classList.toggle('muycerca', map.getZoom() >= 17);
   }
   map.on('zoomend', ajustarEtiquetas);
@@ -248,35 +279,96 @@
     return ZONAS.filter(function (z) { return normal(z.n) === n; })[0];
   }
   function zonaElegida() { return ZONAS.filter(function (z) { return z.n === seleccion; })[0]; }
+
+  /* Día de visita y estado de cada barrio */
+  var DIAS = [
+    { n: 1, c: 'Lun', color: '#1f6feb' }, { n: 2, c: 'Mar', color: '#2da44e' },
+    { n: 3, c: 'Mié', color: '#bf8700' }, { n: 4, c: 'Jue', color: '#8250df' },
+    { n: 5, c: 'Vie', color: '#d1242f' }, { n: 6, c: 'Sáb', color: '#fb8500' },
+    { n: 0, c: 'Dom', color: '#0a7e8c' }
+  ];
+  var ESTADOS = [
+    { k: 'pendiente', t: 'Sin recorrer' }, { k: 'curso', t: 'En curso' }, { k: 'hecho', t: 'Recorrido ✓' }
+  ];
+  var filtroDia = null;      // null = todos, 'sin' = sin día, 0..6 = ese día
+  function infoDe(nombre) {
+    var i = zonasInfo[nombre] || {};
+    return { dia: typeof i.dia === 'number' ? i.dia : null, estado: i.estado || 'pendiente', fecha: i.fecha || null };
+  }
+  function diaDe(nombre) {
+    var d = infoDe(nombre).dia;
+    return DIAS.filter(function (x) { return x.n === d; })[0] || null;
+  }
+  function cambiarInfo(nombre, cambios) {
+    zonasInfo[nombre] = Object.assign(infoDe(nombre), cambios);
+    guardar(LS_ZONAS, zonasInfo);
+  }
+  function pasaFiltro(z) {
+    if (filtroDia === null) return true;
+    var d = infoDe(z.n).dia;
+    return filtroDia === 'sin' ? d === null : d === filtroDia;
+  }
+  function nombreFiltro() {
+    if (filtroDia === 'sin') return 'Sin día';
+    return DIAS.filter(function (x) { return x.n === filtroDia; })[0].c;
+  }
+  function fechaBonita(f) { var a = f.split('-'); return a[2] + '/' + a[1] + '/' + a[0]; }
+
   function clientesVisibles() {
     var z = zonaElegida();
-    return z ? clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); }) : clientes;
+    if (z) return clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); });
+    if (filtroDia !== null) {
+      var zs = ZONAS.filter(pasaFiltro);
+      return clientes.filter(function (c) { return zs.some(function (q) { return dentro(c.lat, c.lng, q.p); }); });
+    }
+    return clientes;
   }
 
   function dibujarZonas() {
     capaZonas.clearLayers();
-    ZONAS.forEach(function (z, i) {
-      if (seleccion && z.n !== seleccion) return;
-      var color = 'hsl(' + ((i * 47) % 360) + ',70%,42%)';
+    ZONAS.forEach(function (z) {
+      if (seleccion ? z.n !== seleccion : !pasaFiltro(z)) return;
+      var inf = infoDe(z.n), dia = diaDe(z.n);
+      var color = dia ? dia.color : '#8c959f';
+      var hecho = inf.estado === 'hecho';
       var poly = L.polygon(z.p.map(function (q) { return [q[1], q[0]]; }), {
-        color: color, weight: seleccion ? 3 : 2, fillColor: color, fillOpacity: seleccion ? 0.12 : 0.22,
+        color: color, weight: inf.estado === 'curso' ? 4 : 2, fillColor: color,
+        fillOpacity: hecho ? 0.06 : (seleccion ? 0.12 : 0.25), dashArray: hecho ? '3 7' : null,
         interactive: !seleccion, bubblingMouseEvents: false
       });
-      poly.bindTooltip(z.n, { permanent: true, direction: 'center', className: 'etq-barrio', interactive: false });
+      var et = document.createElement('span');
+      et.textContent = (hecho ? '✓ ' : '') + z.n + (dia ? ' · ' + dia.c : '');
+      poly.bindTooltip(et, { permanent: true, direction: 'center', className: 'etq-barrio', interactive: false });
       if (!seleccion) poly.on('click', function () { elegirZona(z.n); });
       poly.addTo(capaZonas);
       z.capa = poly;
     });
   }
+  function encuadrar() {
+    var g = L.featureGroup(capaZonas.getLayers());
+    if (g.getLayers().length) map.fitBounds(g.getBounds(), { paddingTopLeft: [20, 20], paddingBottomRight: [20, 170] });
+  }
   function elegirZona(nombre) {
     seleccion = nombre;
     dibujarZonas(); dibujar(); dibujarBarrios();
-    var z = zonaElegida();
-    if (z) map.fitBounds(z.capa.getBounds(), { paddingTopLeft: [20, 20], paddingBottomRight: [20, 170] });
+    ajustarEtiquetas();
+    encuadrar();
   }
   function verTodas() {
     seleccion = null;
     dibujarZonas(); dibujar(); dibujarBarrios();
+    ajustarEtiquetas();
+    if (filtroDia !== null) encuadrar();
+  }
+  function ponerFiltro(v) {
+    filtroDia = v;
+    seleccion = null;
+    dibujarZonas(); dibujar(); dibujarBarrios();
+    ajustarEtiquetas();
+    if (v !== null) {
+      if (capaZonas.getLayers().length) encuadrar();
+      else aviso('Todavía no hay barrios con ese día.');
+    }
   }
 
   var btnLista = document.createElement('button');
@@ -285,26 +377,100 @@
   var btnTodos = document.createElement('button');
   btnTodos.className = 'peligro';
   btnTodos.addEventListener('click', verTodas);
+  var btnFiltro = document.createElement('button');
+  btnFiltro.className = 'peligro';
+  btnFiltro.addEventListener('click', function () { ponerFiltro(null); });
+  var btnInfo = document.createElement('button');
+  btnInfo.id = 'btnInfo';
+  btnInfo.addEventListener('click', function () { abrirZona(); });
+
+  function renderFiltros() {
+    var hoy = new Date().getDay();
+    var cont = $('lFiltros'); cont.textContent = '';
+    var opciones = [{ v: null, t: 'Todos' }]
+      .concat(DIAS.map(function (d) { return { v: d.n, t: d.c + (d.n === hoy ? ' (hoy)' : ''), color: d.color }; }))
+      .concat([{ v: 'sin', t: 'Sin día' }]);
+    opciones.forEach(function (o) {
+      var b = document.createElement('button');
+      b.className = filtroDia === o.v ? 'sel' : '';
+      if (o.color) {
+        var pt = document.createElement('span'); pt.className = 'punto'; pt.style.background = o.color;
+        pt.style.marginRight = '6px'; b.appendChild(pt);
+      }
+      b.appendChild(document.createTextNode(o.t));
+      b.addEventListener('click', function () { ponerFiltro(o.v); renderFiltros(); renderLista(); });
+      cont.appendChild(b);
+    });
+  }
 
   function renderLista() {
     var q = $('lBuscar').value.trim().toLowerCase();
+    var hechos = ZONAS.filter(function (z) { return infoDe(z.n).estado === 'hecho'; }).length;
+    var curso = ZONAS.filter(function (z) { return infoDe(z.n).estado === 'curso'; }).length;
+    $('lResumen').textContent = 'Recorridos: ' + hechos + ' de ' + ZONAS.length + (curso ? ' · en curso: ' + curso : '');
     var cont = $('lItems'); cont.textContent = '';
-    ZONAS.filter(function (z) { return z.n.toLowerCase().indexOf(q) !== -1; }).forEach(function (z) {
+    ZONAS.filter(function (z) { return pasaFiltro(z) && z.n.toLowerCase().indexOf(q) !== -1; }).forEach(function (z) {
       var n = clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); }).length;
+      var inf = infoDe(z.n), dia = diaDe(z.n);
       var b = document.createElement('button');
-      b.appendChild(document.createTextNode(z.n));
-      var s = document.createElement('small'); s.textContent = n + (n === 1 ? ' cliente' : ' clientes');
-      b.appendChild(s);
+      var izq = document.createElement('span');
+      var pt = document.createElement('span'); pt.className = 'punto'; pt.style.background = dia ? dia.color : '#8c959f';
+      izq.appendChild(pt); izq.appendChild(document.createTextNode(z.n));
+      b.appendChild(izq);
+      var det = [];
+      if (dia) det.push(dia.c);
+      if (inf.estado === 'hecho') det.push('✓'); else if (inf.estado === 'curso') det.push('en curso');
+      det.push(n + (n === 1 ? ' cliente' : ' clientes'));
+      var sm = document.createElement('small'); sm.textContent = det.join(' · ');
+      b.appendChild(sm);
       b.addEventListener('click', function () { cerrar('vLista'); elegirZona(z.n); });
       cont.appendChild(b);
     });
-    if (!cont.firstChild) cont.textContent = 'No hay barrios con ese nombre.';
+    if (!cont.firstChild) cont.textContent = 'No hay barrios que coincidan.';
   }
   btnLista.addEventListener('click', function () {
-    $('lBuscar').value = ''; renderLista(); abrir('vLista');
+    $('lBuscar').value = ''; renderFiltros(); renderLista(); abrir('vLista');
   });
   $('lBuscar').addEventListener('input', renderLista);
   $('lCerrar').addEventListener('click', function () { cerrar('vLista'); });
+
+  /* Hoja "día y estado" del barrio elegido */
+  function abrirZona() {
+    if (!zonaElegida()) return;
+    renderZona();
+    abrir('vZona');
+  }
+  function renderZona() {
+    var z = zonaElegida(); if (!z) return;
+    var inf = infoDe(z.n);
+    $('zNombre').textContent = z.n;
+    var n = clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); }).length;
+    $('zInfo').textContent = n + (n === 1 ? ' cliente' : ' clientes') + ' en este barrio' +
+      (inf.estado === 'hecho' && inf.fecha ? ' · recorrido el ' + fechaBonita(inf.fecha) : '');
+    var dias = $('zDias'); dias.textContent = '';
+    DIAS.concat([{ n: null, c: 'Sin día' }]).forEach(function (d) {
+      var b = document.createElement('button');
+      b.textContent = d.c;
+      b.className = inf.dia === d.n ? 'sel' : '';
+      b.addEventListener('click', function () {
+        cambiarInfo(z.n, { dia: d.n });
+        dibujarZonas(); renderZona();
+      });
+      dias.appendChild(b);
+    });
+    var ests = $('zEstados'); ests.textContent = '';
+    ESTADOS.forEach(function (e) {
+      var b = document.createElement('button');
+      b.textContent = e.t;
+      b.className = inf.estado === e.k ? 'sel' : '';
+      b.addEventListener('click', function () {
+        cambiarInfo(z.n, { estado: e.k, fecha: e.k === 'hecho' ? fechaLocal() : null });
+        dibujarZonas(); renderZona();
+      });
+      ests.appendChild(b);
+    });
+  }
+  $('zCerrar').addEventListener('click', function () { cerrar('vZona'); });
 
   fetch('./barrios.json').then(function (r) { return r.json(); }).then(function (a) {
     ZONAS = a;
@@ -317,9 +483,15 @@
     var fila = $('barrios');
     fila.textContent = '';
     fila.appendChild(btnLista);
+    if (filtroDia !== null && !seleccion) {
+      btnFiltro.textContent = '✕ Día: ' + nombreFiltro();
+      fila.appendChild(btnFiltro);
+    }
     if (seleccion) {
-      btnTodos.textContent = '✕ Ver todos (' + seleccion + ')';
+      btnTodos.textContent = '✕ Ver todos';
+      btnInfo.textContent = '📅 ' + seleccion;
       fila.appendChild(btnTodos);
+      fila.appendChild(btnInfo);
     }
     barrios.forEach(function (b) {
       var btn = document.createElement('button');
@@ -506,7 +678,7 @@
 
   /* ---------- Exportar / Importar ---------- */
   $('btnExp').addEventListener('click', function () {
-    var data = { app: 'mapa-clientes-lujan', version: 1, exportado: fechaLocal(), clientes: clientes, barrios: barrios };
+    var data = { app: 'mapa-clientes-lujan', version: 1, exportado: fechaLocal(), clientes: clientes, barrios: barrios, zonas: zonasInfo };
     var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -520,7 +692,7 @@
 
   function marcarExportado() { try { localStorage.setItem('mcl_ultimo_export', String(Date.now())); } catch (e) {} }
   function recordarBackup() {
-    if (!clientes.length) return;
+    if (!clientes.length && !Object.keys(zonasInfo).length) return;
     var t = 0;
     try { t = +localStorage.getItem('mcl_ultimo_export') || 0; } catch (e) {}
     var dias = t ? Math.floor((Date.now() - t) / 86400000) : null;
@@ -550,11 +722,24 @@
         }).map(function (b) {
           return { id: String(b.id || nuevoId()), nombre: b.nombre, lat: +b.lat, lng: +b.lng, zoom: +b.zoom || 15 };
         });
-        if (!okC.length && !okB.length) throw new Error('vacio');
-        if (!confirm('El archivo trae ' + okC.length + ' clientes y ' + okB.length + ' barrios.\nSe suman a los que ya tenés (si uno ya existe, se actualiza). ¿Seguimos?')) return;
+        var okZ = {};
+        if (!Array.isArray(d) && d.zonas && typeof d.zonas === 'object') {
+          Object.keys(d.zonas).forEach(function (k) {
+            var i = d.zonas[k] || {};
+            okZ[k] = {
+              dia: typeof i.dia === 'number' && i.dia >= 0 && i.dia <= 6 ? i.dia : null,
+              estado: ['pendiente', 'curso', 'hecho'].indexOf(i.estado) !== -1 ? i.estado : 'pendiente',
+              fecha: typeof i.fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(i.fecha) ? i.fecha : null
+            };
+          });
+        }
+        var nZ = Object.keys(okZ).length;
+        if (!okC.length && !okB.length && !nZ) throw new Error('vacio');
+        if (!confirm('El archivo trae ' + okC.length + ' clientes, ' + okB.length + ' barrios propios y datos de ' + nZ + ' zonas.\nSe suman a los que ya tenés (si uno ya existe, se actualiza). ¿Seguimos?')) return;
         mezclar(clientes, okC); mezclar(barrios, okB);
-        guardar(LS_CLIENTES, clientes); guardar(LS_BARRIOS, barrios);
-        dibujar(); dibujarBarrios();
+        Object.assign(zonasInfo, okZ);
+        guardar(LS_CLIENTES, clientes); guardar(LS_BARRIOS, barrios); guardar(LS_ZONAS, zonasInfo);
+        dibujarZonas(); dibujar(); dibujarBarrios();
         aviso('Importado: ' + okC.length + ' clientes y ' + okB.length + ' barrios.');
       } catch (err) {
         aviso('Ese archivo no sirve. Tiene que ser un .json exportado desde esta app.');
