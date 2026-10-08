@@ -4,7 +4,7 @@ const VERSION = 'mcl-v1';
 const TILES = 'mcl-tiles-v1';
 const MAX_TILES = 600;
 
-const LOCALES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const LOCALES = ['./', './index.html', './manifest.json', './icon.svg'];
 const LEAFLET = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
