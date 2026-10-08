@@ -1,0 +1,15 @@
+{
+  "name": "Mapa de Clientes Luján",
+  "short_name": "Clientes Luján",
+  "description": "Mapa con los clientes de Luján, guardados en tu celular.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1f6feb",
+  "theme_color": "#1f6feb",
+  "lang": "es-AR",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
