@@ -1,6 +1,6 @@
 // Service worker: deja la app y los mosaicos ya vistos disponibles sin internet.
 // Subí este número cada vez que cambies index.html u otro archivo.
-const VERSION = 'mcl-v2';
+const VERSION = 'mcl-v3';
 const TILES = 'mcl-tiles-v1';
 const MAX_TILES = 600;
 
@@ -13,8 +13,9 @@ const LEAFLET = [
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const c = await caches.open(VERSION);
-    await c.addAll(LOCALES);
-    await Promise.allSettled(LEAFLET.map((u) => c.add(u)));
+    // cache:'reload' = ir siempre a internet, sin usar copias viejas del navegador
+    await Promise.all(LOCALES.map((u) => c.add(new Request(u, { cache: 'reload' }))));
+    await Promise.allSettled(LEAFLET.map((u) => c.add(new Request(u, { cache: 'reload' }))));
     self.skipWaiting();
   })());
 });
