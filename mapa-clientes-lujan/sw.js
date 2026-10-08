@@ -1,10 +1,10 @@
 // Service worker: deja la app y los mosaicos ya vistos disponibles sin internet.
 // Subí este número cada vez que cambies index.html u otro archivo.
-const VERSION = 'mcl-v1';
+const VERSION = 'mcl-v2';
 const TILES = 'mcl-tiles-v1';
 const MAX_TILES = 600;
 
-const LOCALES = ['./', './index.html', './manifest.json', './icon.svg'];
+const LOCALES = ['./', './index.html', './manifest.json', './icon.svg', './barrios.json'];
 const LEAFLET = [
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
