@@ -55,7 +55,13 @@
   .etiqueta { background:#fff; border:1px solid #888; border-radius:6px; font-weight:700; font-size:14px; padding:2px 6px; box-shadow:none; }
   .etiqueta::before { display:none; }
   .lejos .etiqueta { display:none; }
+  .etq-barrio { background:rgba(255,255,255,.78); border:none; box-shadow:none; color:#1b1f24; font-weight:700; font-size:12px; padding:1px 4px; }
+  .etq-barrio::before { display:none; }
+  .muylejos .etq-barrio { display:none; }
   .leaflet-control-attribution { font-size:11px; }
+  #lItems button { display:flex; justify-content:space-between; width:100%; margin-top:8px; text-align:left; }
+  #lItems small { font-weight:400; color:#57606a; align-self:center; }
+  input[type=search] { -webkit-appearance:none; appearance:none; }
 
   #aviso { position:fixed; left:12px; right:12px; top:calc(12px + env(safe-area-inset-top)); z-index:1300;
     background:#1b1f24; color:#fff; padding:14px 16px; border-radius:12px; text-align:center; display:none; }
@@ -107,6 +113,18 @@
       <button type="submit" class="primario">Guardar</button>
     </div>
   </form>
+</div>
+
+<!-- Lista de barrios -->
+<div class="velo" id="vLista">
+  <div class="hoja">
+    <h2>Barrios</h2>
+    <input id="lBuscar" type="search" placeholder="Buscar barrio…" autocomplete="off">
+    <div id="lItems"></div>
+    <div class="botones">
+      <button id="lCerrar" style="flex-basis:100%">Cerrar</button>
+    </div>
+  </div>
 </div>
 
 <!-- Ficha de cliente -->
@@ -194,7 +212,7 @@
 
   function dibujar() {
     capa.clearLayers();
-    clientes.forEach(function (c) {
+    clientesVisibles().forEach(function (c) {
       var m = L.marker([c.lat, c.lng], { icon: iconoPin() })
         .bindTooltip(c.nombre, { permanent: true, direction: 'bottom', offset: [0, 0], className: 'etiqueta' });
       m.on('click', function () { mostrarFicha(c.id); });
@@ -203,15 +221,98 @@
   }
   function ajustarEtiquetas() {
     $('map').classList.toggle('lejos', map.getZoom() < 15);
+    $('map').classList.toggle('muylejos', map.getZoom() < 14);
   }
   map.on('zoomend', ajustarEtiquetas);
   ajustarEtiquetas();
+
+  /* ---------- Zonas (contornos de barrios de OpenStreetMap) ---------- */
+  var ZONAS = [];            // { n: nombre, p: [[lng, lat], ...] }
+  var seleccion = null;      // nombre de la zona elegida, o null = todas
+  var capaZonas = L.layerGroup().addTo(map);
+
+  function dentro(lat, lng, p) {
+    var d = false;
+    for (var i = 0, j = p.length - 1; i < p.length; j = i++) {
+      var xi = p[i][0], yi = p[i][1], xj = p[j][0], yj = p[j][1];
+      if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) d = !d;
+    }
+    return d;
+  }
+  function zonaElegida() { return ZONAS.filter(function (z) { return z.n === seleccion; })[0]; }
+  function clientesVisibles() {
+    var z = zonaElegida();
+    return z ? clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); }) : clientes;
+  }
+
+  function dibujarZonas() {
+    capaZonas.clearLayers();
+    ZONAS.forEach(function (z, i) {
+      if (seleccion && z.n !== seleccion) return;
+      var color = 'hsl(' + ((i * 47) % 360) + ',70%,42%)';
+      var poly = L.polygon(z.p.map(function (q) { return [q[1], q[0]]; }), {
+        color: color, weight: seleccion ? 3 : 2, fillColor: color, fillOpacity: seleccion ? 0.12 : 0.22,
+        interactive: !seleccion, bubblingMouseEvents: false
+      });
+      poly.bindTooltip(z.n, { permanent: true, direction: 'center', className: 'etq-barrio', interactive: false });
+      if (!seleccion) poly.on('click', function () { elegirZona(z.n); });
+      poly.addTo(capaZonas);
+      z.capa = poly;
+    });
+  }
+  function elegirZona(nombre) {
+    seleccion = nombre;
+    dibujarZonas(); dibujar(); dibujarBarrios();
+    var z = zonaElegida();
+    if (z) map.fitBounds(z.capa.getBounds(), { paddingTopLeft: [20, 20], paddingBottomRight: [20, 170] });
+  }
+  function verTodas() {
+    seleccion = null;
+    dibujarZonas(); dibujar(); dibujarBarrios();
+  }
+
+  var btnLista = document.createElement('button');
+  btnLista.className = 'primario';
+  btnLista.textContent = 'Barrios ▾';
+  var btnTodos = document.createElement('button');
+  btnTodos.className = 'peligro';
+  btnTodos.addEventListener('click', verTodas);
+
+  function renderLista() {
+    var q = $('lBuscar').value.trim().toLowerCase();
+    var cont = $('lItems'); cont.textContent = '';
+    ZONAS.filter(function (z) { return z.n.toLowerCase().indexOf(q) !== -1; }).forEach(function (z) {
+      var n = clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); }).length;
+      var b = document.createElement('button');
+      b.appendChild(document.createTextNode(z.n));
+      var s = document.createElement('small'); s.textContent = n + (n === 1 ? ' cliente' : ' clientes');
+      b.appendChild(s);
+      b.addEventListener('click', function () { cerrar('vLista'); elegirZona(z.n); });
+      cont.appendChild(b);
+    });
+    if (!cont.firstChild) cont.textContent = 'No hay barrios con ese nombre.';
+  }
+  btnLista.addEventListener('click', function () {
+    $('lBuscar').value = ''; renderLista(); abrir('vLista');
+  });
+  $('lBuscar').addEventListener('input', renderLista);
+  $('lCerrar').addEventListener('click', function () { cerrar('vLista'); });
+
+  fetch('./barrios.json').then(function (r) { return r.json(); }).then(function (a) {
+    ZONAS = a;
+    dibujarZonas();
+  }).catch(function () { aviso('No pude cargar los contornos de los barrios.'); });
 
   /* ---------- Barrios ---------- */
   var barrioActivo = null;
   function dibujarBarrios() {
     var fila = $('barrios');
     fila.textContent = '';
+    fila.appendChild(btnLista);
+    if (seleccion) {
+      btnTodos.textContent = '✕ Ver todos (' + seleccion + ')';
+      fila.appendChild(btnTodos);
+    }
     barrios.forEach(function (b) {
       var btn = document.createElement('button');
       btn.className = 'barrio' + (b.id === barrioActivo ? ' activo' : '');
