@@ -1,8 +1,8 @@
 // Service worker: deja la app y los mosaicos ya vistos disponibles sin internet.
 // Subí este número cada vez que cambies index.html u otro archivo.
-const VERSION = 'mcl-v3';
-const TILES = 'mcl-tiles-v1';
-const MAX_TILES = 600;
+const VERSION = 'mcl-v4';
+const TILES = 'mcl-tiles-v2';
+const MAX_TILES = 2500;
 
 const LOCALES = ['./', './index.html', './manifest.json', './icon.svg', './barrios.json'];
 const LEAFLET = [
