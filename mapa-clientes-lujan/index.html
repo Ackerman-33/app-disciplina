@@ -64,6 +64,16 @@
   .chips button.sel { background:var(--azul); border-color:var(--azul); color:#fff; }
   .punto { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:8px; vertical-align:middle; }
   #btnInfo { max-width:55vw; overflow:hidden; text-overflow:ellipsis; }
+  .num { background:none; border:none; }
+  .num div { width:28px; height:28px; border-radius:50%; background:#1f6feb; color:#fff; font-weight:700; font-size:14px;
+    display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.55); }
+  .num div.h { background:#8c959f; }
+  .num div.p { background:#fb8500; width:36px; height:36px; margin:-4px 0 0 -4px; font-size:16px; }
+  .parada { display:flex; gap:8px; margin-top:8px; }
+  .parada .ver { flex:1 1 auto; min-width:0; text-align:left; white-space:normal; }
+  .parada .ok { flex:0 0 56px; padding:0; }
+  .parada.hecha .ver { text-decoration:line-through; color:#57606a; }
+  .parada small { display:block; font-weight:400; color:#57606a; }
   #lItems button { display:flex; justify-content:space-between; width:100%; margin-top:8px; text-align:left; }
   #lItems small { font-weight:400; color:#57606a; align-self:center; }
   input[type=search] { -webkit-appearance:none; appearance:none; }
@@ -92,7 +102,7 @@
   <form class="hoja" id="formCliente" autocomplete="off">
     <h2 id="tituloForm">Nuevo cliente</h2>
     <label for="fNombre">Nombre</label>
-    <input id="fNombre" required maxlength="80">
+    <input id="fNombre" maxlength="80" placeholder="Si no sabés el nombre, dejalo vacío">
     <label for="fDir">Dirección</label>
     <input id="fDir" maxlength="120">
     <label for="fTel">Teléfono</label>
@@ -149,6 +159,27 @@
   </div>
 </div>
 
+<!-- Ruta -->
+<div class="velo" id="vRuta">
+  <div class="hoja">
+    <h2>Ruta del recorrido</h2>
+    <div class="dato" id="rResumen"></div>
+    <div class="chips" id="rModo"></div>
+    <div class="botones">
+      <button class="primario" id="rProxima" style="flex-basis:100%">▶ Ir a la próxima parada</button>
+    </div>
+    <label>Toda la ruta en Google Maps</label>
+    <div class="chips" id="rTramos"></div>
+    <label>Paradas (tocá ✓ al visitar)</label>
+    <div id="rLista"></div>
+    <div class="botones">
+      <button id="rRehacer">Armar de nuevo</button>
+      <button class="peligro" id="rBorrar">Borrar ruta</button>
+      <button id="rCerrar" style="flex-basis:100%">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Ficha de cliente -->
 <div class="velo" id="vFicha">
   <div class="hoja">
@@ -158,6 +189,7 @@
     <div class="dato" id="kNota"></div>
     <div class="botones">
       <button class="primario" id="kMaps" style="flex-basis:100%">🗺 Ir en Maps</button>
+      <button id="kHecho" style="flex-basis:100%;display:none"></button>
       <button id="kEditar">✏ Editar</button>
       <button class="peligro" id="kBorrar">🗑 Borrar</button>
       <button id="kCerrar" style="flex-basis:100%">Cerrar</button>
@@ -202,6 +234,11 @@
     } catch (e) { return {}; }
   }
   var zonasInfo = leerObj(LS_ZONAS);   // { "Nombre del barrio": { dia: 0-6|null, estado, fecha } }
+  var LS_RUTA = 'mcl_ruta';
+  var ruta = (function () {          // { ids, hechos, modo, origen:{lat,lng}, creada }
+    try { var v = JSON.parse(localStorage.getItem(LS_RUTA)); return v && Array.isArray(v.ids) ? v : null; }
+    catch (e) { return null; }
+  })();
   var clientes = leer(LS_CLIENTES, []);
   var barrios = leer(LS_BARRIOS, null);
   if (!barrios || !barrios.length) { barrios = BARRIOS_INICIALES.slice(); guardar(LS_BARRIOS, barrios); }
@@ -228,7 +265,7 @@
     .setView([-34.5703, -59.1050], 14);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(map);
   L.control.attribution({ position: 'topright', prefix: false })
-    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v5').addTo(map);
+    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v6').addTo(map);
 
   var capa = L.layerGroup().addTo(map);
   var miPunto = null;
@@ -243,11 +280,13 @@
   function dibujar() {
     capa.clearLayers();
     clientesVisibles().forEach(function (c) {
+      if (ruta && ruta.ids.indexOf(c.id) !== -1) return;   // ese pin se dibuja numerado
       var m = L.marker([c.lat, c.lng], { icon: iconoPin() })
         .bindTooltip(c.nombre, { permanent: true, direction: 'bottom', offset: [0, 0], className: 'etiqueta' });
       m.on('click', function () { mostrarFicha(c.id); });
       m.addTo(capa);
     });
+    if (ruta) dibujarRuta();
   }
   function ajustarEtiquetas() {
     $('map').classList.toggle('lejos', map.getZoom() < 15);
@@ -380,6 +419,8 @@
   var btnFiltro = document.createElement('button');
   btnFiltro.className = 'peligro';
   btnFiltro.addEventListener('click', function () { ponerFiltro(null); });
+  var btnRuta = document.createElement('button');
+  btnRuta.addEventListener('click', function () { if (ruta) abrirRuta(); else crearRuta(); });
   var btnInfo = document.createElement('button');
   btnInfo.id = 'btnInfo';
   btnInfo.addEventListener('click', function () { abrirZona(); });
@@ -483,6 +524,10 @@
     var fila = $('barrios');
     fila.textContent = '';
     fila.appendChild(btnLista);
+    var ps = ruta ? paradas() : [];
+    btnRuta.textContent = ruta ? '🧭 Ruta ' + ps.filter(function (c) { return ruta.hechos[c.id]; }).length + '/' + ps.length : '🧭 Ruta';
+    btnRuta.className = ruta ? 'primario' : '';
+    fila.appendChild(btnRuta);
     if (filtroDia !== null && !seleccion) {
       btnFiltro.textContent = '✕ Día: ' + nombreFiltro();
       fila.appendChild(btnFiltro);
@@ -571,8 +616,7 @@
   $('fCancelar').addEventListener('click', function () { cerrar('vFormulario'); });
   $('formCliente').addEventListener('submit', function (e) {
     e.preventDefault();
-    var nombre = $('fNombre').value.trim();
-    if (!nombre) return;
+    var nombre = $('fNombre').value.trim() || 'Negocio sin nombre';
     var datos = {
       nombre: nombre,
       direccion: $('fDir').value.trim(),
@@ -643,6 +687,11 @@
       a.textContent = '📞 ' + c.telefono;
       t.appendChild(a);
     }
+    var kh = $('kHecho');
+    if (ruta && ruta.ids.indexOf(id) !== -1) {
+      kh.style.display = '';
+      kh.textContent = ruta.hechos[id] ? '↩ Quitar visitado' : '✓ Marcar visitado';
+    } else kh.style.display = 'none';
     abrir('vFicha');
   }
   function campo(id, titulo, valor) {
@@ -657,6 +706,13 @@
   $('kMaps').addEventListener('click', function () {
     var c = clienteActual(); if (!c) return;
     window.open('https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + c.lat + ',' + c.lng, '_blank', 'noopener');
+  });
+  $('kHecho').addEventListener('click', function () {
+    if (!ruta || !fichaId) return;
+    if (ruta.hechos[fichaId]) delete ruta.hechos[fichaId]; else ruta.hechos[fichaId] = true;
+    guardarRuta(); cerrar('vFicha'); dibujar(); dibujarBarrios();
+    var pr = proxima();
+    aviso(pr ? 'Anotado. Próxima parada: ' + pr.nombre : 'Ruta completa. Buen laburo.');
   });
   $('kEditar').addEventListener('click', function () {
     var c = clienteActual(); if (!c) return;
@@ -675,6 +731,155 @@
 
   // Tocar el fondo oscuro cierra la ficha
   $('vFicha').addEventListener('click', function (e) { if (e.target === this) cerrar('vFicha'); });
+
+  /* ---------- Ruta ---------- */
+  function guardarRuta() {
+    if (ruta) guardar(LS_RUTA, ruta);
+    else { try { localStorage.removeItem(LS_RUTA); } catch (e) {} }
+  }
+  function distKm(a, b) {
+    var t = Math.PI / 180, dLa = (b.lat - a.lat) * t, dLo = (b.lng - a.lng) * t;
+    var h = Math.pow(Math.sin(dLa / 2), 2) + Math.cos(a.lat * t) * Math.cos(b.lat * t) * Math.pow(Math.sin(dLo / 2), 2);
+    return 2 * 6371 * Math.asin(Math.sqrt(h));
+  }
+  // Vecino más cercano y después 2-opt (destraba cruces). Camino abierto: arranca en el origen y no vuelve.
+  function ordenar(origen, pts) {
+    var path = [origen], rest = pts.slice();
+    while (rest.length) {
+      var last = path[path.length - 1], bi = 0, bd = Infinity;
+      for (var i = 0; i < rest.length; i++) { var d = distKm(last, rest[i]); if (d < bd) { bd = d; bi = i; } }
+      path.push(rest.splice(bi, 1)[0]);
+    }
+    var n = path.length, mejora = true, pasadas = 0;
+    while (mejora && pasadas++ < 60) {
+      mejora = false;
+      for (var a = 1; a < n - 1; a++) {
+        for (var b = a + 1; b < n; b++) {
+          var p0 = path[a - 1], p1 = path[a], p2 = path[b], p3 = b + 1 < n ? path[b + 1] : null;
+          var antes = distKm(p0, p1) + (p3 ? distKm(p2, p3) : 0);
+          var despues = distKm(p0, p2) + (p3 ? distKm(p1, p3) : 0);
+          if (despues < antes - 1e-9) {
+            var seg = path.slice(a, b + 1).reverse();
+            for (var k = 0; k < seg.length; k++) path[a + k] = seg[k];
+            mejora = true;
+          }
+        }
+      }
+    }
+    return path.slice(1);
+  }
+  function paradas() {
+    return ruta.ids.map(function (id) { return clientes.filter(function (c) { return c.id === id; })[0]; }).filter(Boolean);
+  }
+  function proxima() {
+    return paradas().filter(function (c) { return !ruta.hechos[c.id]; })[0] || null;
+  }
+  function crearRuta() {
+    var pts = clientesVisibles();
+    if (!pts.length) { aviso('No hay clientes para armar la ruta. Elegí un barrio o un día que tenga clientes.'); return; }
+    if (pts.length > 80 && !confirm('Son ' + pts.length + ' clientes, la ruta va a ser larguísima. Conviene elegir un barrio primero. ¿Seguimos igual?')) return;
+    var armar = function (origen) {
+      var orden = ordenar(origen, pts);
+      ruta = { ids: orden.map(function (c) { return c.id; }), hechos: {}, modo: (ruta && ruta.modo) || 'walking', origen: origen, creada: fechaLocal() };
+      guardarRuta(); dibujar(); dibujarBarrios();
+      map.fitBounds(L.latLngBounds(orden.map(function (c) { return [c.lat, c.lng]; })),
+        { paddingTopLeft: [20, 20], paddingBottomRight: [20, 170] });
+      abrirRuta();
+    };
+    var desdeCentro = function () { var c = map.getCenter(); armar({ lat: c.lat, lng: c.lng }); };
+    if (!navigator.geolocation) { desdeCentro(); return; }
+    aviso('Buscando tu ubicación para empezar la ruta…');
+    navigator.geolocation.getCurrentPosition(function (p) {
+      armar({ lat: p.coords.latitude, lng: p.coords.longitude });
+    }, function () {
+      aviso('No pude ver tu ubicación: la ruta arranca desde el centro del mapa.');
+      desdeCentro();
+    }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
+  }
+  function dibujarRuta() {
+    var ps = paradas();
+    if (!ps.length) { ruta = null; guardarRuta(); dibujarBarrios(); return; }
+    var pr = proxima();
+    var ll = [[ruta.origen.lat, ruta.origen.lng]].concat(ps.map(function (c) { return [c.lat, c.lng]; }));
+    L.polyline(ll, { color: '#1f6feb', weight: 4, opacity: 0.7 }).addTo(capa);
+    L.circleMarker(ll[0], { radius: 7, color: '#fff', weight: 3, fillColor: '#1b1f24', fillOpacity: 1, interactive: false }).addTo(capa);
+    ps.forEach(function (c, i) {
+      var cls = ruta.hechos[c.id] ? 'h' : (pr && pr.id === c.id ? 'p' : '');
+      L.marker([c.lat, c.lng], { icon: L.divIcon({ className: 'num', html: '<div class="' + cls + '">' + (i + 1) + '</div>', iconSize: [28, 28], iconAnchor: [14, 14] }) })
+        .on('click', function () { mostrarFicha(c.id); }).addTo(capa);
+    });
+  }
+  function urlMaps(lista, desde) {
+    var dest = lista[lista.length - 1];
+    var u = 'https://www.google.com/maps/dir/?api=1&travelmode=' + ruta.modo + '&destination=' + dest.lat + ',' + dest.lng;
+    var via = lista.slice(0, -1).map(function (c) { return c.lat + ',' + c.lng; }).join('|');
+    if (via) u += '&waypoints=' + encodeURIComponent(via);
+    if (desde) u += '&origin=' + desde.lat + ',' + desde.lng;
+    return u;
+  }
+  function abrirRuta() { renderRuta(); abrir('vRuta'); }
+  function renderRuta() {
+    if (!ruta) return;
+    var ps = paradas();
+    var hechas = ps.filter(function (c) { return ruta.hechos[c.id]; }).length;
+    var km = 0, prev = ruta.origen;
+    ps.forEach(function (c) { km += distKm(prev, c); prev = c; });
+    $('rResumen').textContent = ps.length + ' paradas · ' + hechas + ' visitadas · unos ' + km.toFixed(1) +
+      ' km en línea recta (por calle es un poco más)';
+    var modo = $('rModo'); modo.textContent = '';
+    [['walking', 'A pie'], ['driving', 'En auto']].forEach(function (m) {
+      var b = document.createElement('button');
+      b.textContent = m[1]; b.className = ruta.modo === m[0] ? 'sel' : '';
+      b.addEventListener('click', function () { ruta.modo = m[0]; guardarRuta(); renderRuta(); });
+      modo.appendChild(b);
+    });
+    var falta = ps.filter(function (c) { return !ruta.hechos[c.id]; });
+    $('rProxima').style.display = falta.length ? '' : 'none';
+    var tr = $('rTramos'); tr.textContent = '';
+    for (var k = 0; k * 10 < falta.length; k++) {
+      (function (k) {
+        var ch = falta.slice(k * 10, k * 10 + 10);
+        var b = document.createElement('button');
+        b.textContent = 'Tramo ' + (k + 1) + ' (paradas ' + (ps.indexOf(ch[0]) + 1) + ' a ' + (ps.indexOf(ch[ch.length - 1]) + 1) + ')';
+        b.addEventListener('click', function () {
+          window.open(urlMaps(ch, k > 0 ? falta[k * 10 - 1] : null), '_blank', 'noopener');
+        });
+        tr.appendChild(b);
+      })(k);
+    }
+    if (!falta.length) tr.textContent = 'Ya visitaste todas las paradas.';
+    var lista = $('rLista'); lista.textContent = '';
+    ps.forEach(function (c, i) {
+      var fila = document.createElement('div');
+      fila.className = 'parada' + (ruta.hechos[c.id] ? ' hecha' : '');
+      var ok = document.createElement('button');
+      ok.className = 'ok'; ok.textContent = ruta.hechos[c.id] ? '↩' : '✓';
+      ok.setAttribute('aria-label', 'Marcar visitado');
+      ok.addEventListener('click', function () {
+        if (ruta.hechos[c.id]) delete ruta.hechos[c.id]; else ruta.hechos[c.id] = true;
+        guardarRuta(); dibujar(); dibujarBarrios(); renderRuta();
+      });
+      var ver = document.createElement('button');
+      ver.className = 'ver';
+      ver.appendChild(document.createTextNode((i + 1) + '. ' + c.nombre));
+      if (c.direccion) { var sm = document.createElement('small'); sm.textContent = c.direccion; ver.appendChild(sm); }
+      ver.addEventListener('click', function () { cerrar('vRuta'); map.flyTo([c.lat, c.lng], 18); mostrarFicha(c.id); });
+      fila.appendChild(ok); fila.appendChild(ver);
+      lista.appendChild(fila);
+    });
+  }
+  $('rCerrar').addEventListener('click', function () { cerrar('vRuta'); });
+  $('rProxima').addEventListener('click', function () {
+    var pr = proxima(); if (!pr) return;
+    window.open('https://www.google.com/maps/dir/?api=1&travelmode=' + ruta.modo + '&destination=' + pr.lat + ',' + pr.lng, '_blank', 'noopener');
+  });
+  $('rRehacer').addEventListener('click', function () {
+    if (confirm('Se arma de nuevo con los clientes que ves ahora y se pierden las marcas de visitado. ¿Seguimos?')) { cerrar('vRuta'); crearRuta(); }
+  });
+  $('rBorrar').addEventListener('click', function () {
+    if (!confirm('¿Borrar la ruta? Los clientes no se tocan.')) return;
+    ruta = null; guardarRuta(); cerrar('vRuta'); dibujar(); dibujarBarrios();
+  });
 
   /* ---------- Exportar / Importar ---------- */
   $('btnExp').addEventListener('click', function () {
