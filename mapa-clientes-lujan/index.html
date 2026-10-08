@@ -69,6 +69,8 @@
     display:flex; align-items:center; justify-content:center; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.55); }
   .num div.h { background:#8c959f; }
   .num div.p { background:#fb8500; width:36px; height:36px; margin:-4px 0 0 -4px; font-size:16px; }
+  .pre { white-space:pre-line; }
+  .estados button.sel { color:#fff; border-color:transparent; }
   .parada { display:flex; gap:8px; margin-top:8px; }
   .parada .ver { flex:1 1 auto; min-width:0; text-align:left; white-space:normal; }
   .parada .ok { flex:0 0 56px; padding:0; }
@@ -136,10 +138,29 @@
     <h2>Barrios</h2>
     <div class="dato" id="lResumen"></div>
     <div class="chips" id="lFiltros"></div>
+    <button id="lRepartir" style="width:100%;margin-top:10px">📅 Repartir Luján en días (automático)</button>
     <input id="lBuscar" type="search" placeholder="Buscar barrio…" autocomplete="off" style="margin-top:10px">
     <div id="lItems"></div>
     <div class="botones">
       <button id="lCerrar" style="flex-basis:100%">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Reparto automático en días -->
+<div class="velo" id="vReparto">
+  <div class="hoja">
+    <h2>Repartir Luján en días</h2>
+    <p style="margin:0">Agrupa los barrios por cercanía y trata de que cada día tenga un trabajo parecido. Después podés cambiar cualquier barrio a mano.</p>
+    <label>Días que salís</label>
+    <div class="chips" id="pDias"></div>
+    <label>Opciones</label>
+    <div class="chips" id="pOpc"></div>
+    <div class="dato pre" id="pResultado"></div>
+    <div class="botones">
+      <button id="pCerrar">Cerrar</button>
+      <button class="peligro" id="pDeshacer" style="display:none">Deshacer</button>
+      <button class="primario" id="pHacer" style="flex-basis:100%">Repartir</button>
     </div>
   </div>
 </div>
@@ -187,6 +208,7 @@
     <div class="dato" id="kDir"></div>
     <div class="dato" id="kTel"></div>
     <div class="dato" id="kNota"></div>
+    <div class="chips estados" id="kEstados"></div>
     <div class="botones">
       <button class="primario" id="kMaps" style="flex-basis:100%">🗺 Ir en Maps</button>
       <button id="kHecho" style="flex-basis:100%;display:none"></button>
@@ -239,6 +261,16 @@
     try { var v = JSON.parse(localStorage.getItem(LS_RUTA)); return v && Array.isArray(v.ids) ? v : null; }
     catch (e) { return null; }
   })();
+  var ESTADOS_C = [
+    { k: 'nuevo', t: 'Sin contactar', color: '#d1242f' },
+    { k: 'interesado', t: 'Interesado', color: '#2da44e' },
+    { k: 'volver', t: 'Volver', color: '#fb8500' },
+    { k: 'no', t: 'No le interesa', color: '#6e7781' },
+    { k: 'cliente', t: 'Ya es cliente', color: '#8250df' }
+  ];
+  function estadoC(c) {
+    return ESTADOS_C.filter(function (e) { return e.k === c.estado; })[0] || ESTADOS_C[0];
+  }
   var clientes = leer(LS_CLIENTES, []);
   var barrios = leer(LS_BARRIOS, null);
   if (!barrios || !barrios.length) { barrios = BARRIOS_INICIALES.slice(); guardar(LS_BARRIOS, barrios); }
@@ -265,15 +297,15 @@
     .setView([-34.5703, -59.1050], 14);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(map);
   L.control.attribution({ position: 'topright', prefix: false })
-    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v6').addTo(map);
+    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v7').addTo(map);
 
   var capa = L.layerGroup().addTo(map);
   var miPunto = null;
 
-  function iconoPin() {
+  function iconoPin(color) {
     return L.divIcon({
       className: 'pin', iconSize: [36, 46], iconAnchor: [18, 46], tooltipAnchor: [0, -40],
-      html: '<svg width="36" height="46" viewBox="0 0 36 46"><path d="M18 1C8.6 1 1 8.4 1 17.6 1 30 18 45 18 45s17-15 17-27.4C35 8.4 27.4 1 18 1z" fill="#d1242f" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17.5" r="6.5" fill="#fff"/></svg>'
+      html: '<svg width="36" height="46" viewBox="0 0 36 46"><path d="M18 1C8.6 1 1 8.4 1 17.6 1 30 18 45 18 45s17-15 17-27.4C35 8.4 27.4 1 18 1z" fill="' + (color || '#d1242f') + '" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17.5" r="6.5" fill="#fff"/></svg>'
     });
   }
 
@@ -281,7 +313,7 @@
     capa.clearLayers();
     clientesVisibles().forEach(function (c) {
       if (ruta && ruta.ids.indexOf(c.id) !== -1) return;   // ese pin se dibuja numerado
-      var m = L.marker([c.lat, c.lng], { icon: iconoPin() })
+      var m = L.marker([c.lat, c.lng], { icon: iconoPin(estadoC(c).color) })
         .bindTooltip(c.nombre, { permanent: true, direction: 'bottom', offset: [0, 0], className: 'etiqueta' });
       m.on('click', function () { mostrarFicha(c.id); });
       m.addTo(capa);
@@ -486,7 +518,12 @@
     var inf = infoDe(z.n);
     $('zNombre').textContent = z.n;
     var n = clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); }).length;
-    $('zInfo').textContent = n + (n === 1 ? ' cliente' : ' clientes') + ' en este barrio' +
+    var enZona = clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); });
+    var porEstado = ESTADOS_C.map(function (e) {
+      var k = enZona.filter(function (c) { return estadoC(c).k === e.k; }).length;
+      return k ? k + ' ' + e.t.toLowerCase() : null;
+    }).filter(Boolean).join(' · ');
+    $('zInfo').textContent = n + (n === 1 ? ' cliente' : ' clientes') + ' en este barrio' + (porEstado ? ' (' + porEstado + ')' : '') +
       (inf.estado === 'hecho' && inf.fecha ? ' · recorrido el ' + fechaBonita(inf.fecha) : '');
     var dias = $('zDias'); dias.textContent = '';
     DIAS.concat([{ n: null, c: 'Sin día' }]).forEach(function (d) {
@@ -626,7 +663,7 @@
     if (editando) {
       Object.assign(editando, datos);
     } else {
-      clientes.push(Object.assign({ id: nuevoId(), lat: posNueva.lat, lng: posNueva.lng }, datos));
+      clientes.push(Object.assign({ id: nuevoId(), lat: posNueva.lat, lng: posNueva.lng, estado: 'nuevo' }, datos));
     }
     guardar(LS_CLIENTES, clientes);
     cerrar('vFormulario');
@@ -687,6 +724,19 @@
       a.textContent = '📞 ' + c.telefono;
       t.appendChild(a);
     }
+    var ke = $('kEstados'); ke.textContent = '';
+    ESTADOS_C.forEach(function (e) {
+      var b = document.createElement('button');
+      b.textContent = e.t;
+      if (estadoC(c).k === e.k) { b.className = 'sel'; b.style.background = e.color; }
+      b.addEventListener('click', function () {
+        c.estado = e.k;
+        guardar(LS_CLIENTES, clientes);
+        dibujar();
+        mostrarFicha(id);
+      });
+      ke.appendChild(b);
+    });
     var kh = $('kHecho');
     if (ruta && ruta.ids.indexOf(id) !== -1) {
       kh.style.display = '';
@@ -732,6 +782,143 @@
   // Tocar el fondo oscuro cierra la ficha
   $('vFicha').addEventListener('click', function (e) { if (e.target === this) cerrar('vFicha'); });
 
+  /* ---------- Reparto automático de barrios en días ---------- */
+  var repartoDias = [1, 2, 3, 4, 5, 6];
+  var repartoMantener = true, repartoSaltar = true;
+  var respaldoReparto = null;
+
+  function plano(lat, lng) { return { x: (lng + 59.1) * Math.cos(-34.57 * Math.PI / 180) * 111.32, y: (lat + 34.57) * 110.57 }; }
+  function medidas(z) {   // área en km² y centro del barrio
+    var q = z.p.map(function (v) { return plano(v[1], v[0]); }), a = 0, cx = 0, cy = 0;
+    for (var i = 0; i < q.length - 1; i++) {
+      var f = q[i].x * q[i + 1].y - q[i + 1].x * q[i].y;
+      a += f; cx += (q[i].x + q[i + 1].x) * f; cy += (q[i].y + q[i + 1].y) * f;
+    }
+    a /= 2;
+    if (Math.abs(a) < 1e-9) return { area: 0, x: q[0].x, y: q[0].y };
+    return { area: Math.abs(a), x: cx / (6 * a), y: cy / (6 * a) };
+  }
+  function repartir(dias, mantener, saltar) {
+    var items = ZONAS.filter(function (z) { return !(saltar && infoDe(z.n).estado === 'hecho'); }).map(function (z) {
+      var m = medidas(z);
+      var nc = clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); }).length;
+      return { z: z, x: m.x, y: m.y, area: m.area, w: Math.min(3, Math.max(0.15, m.area)) + 0.03 * nc, dia: null, fijo: false };
+    });
+    if (mantener) items.forEach(function (it) {
+      var d = infoDe(it.z.n).dia;
+      if (d !== null && dias.indexOf(d) !== -1) { it.dia = d; it.fijo = true; }
+    });
+    var libres = items.filter(function (it) { return !it.fijo; });
+    var total = items.reduce(function (a, it) { return a + it.w; }, 0);
+    var cap = total / dias.length * 1.15;
+    var grupos = dias.map(function (d) { return { dia: d, x: null, y: null, carga: 0 }; });
+    function centros() {
+      grupos.forEach(function (g) {
+        var its = items.filter(function (it) { return it.dia === g.dia; }), sw = 0, sx = 0, sy = 0;
+        its.forEach(function (it) { sw += it.w; sx += it.x * it.w; sy += it.y * it.w; });
+        g.carga = sw;
+        if (sw) { g.x = sx / sw; g.y = sy / sw; }   // si quedó vacío, conserva su semilla
+      });
+    }
+    function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+    centros();
+    // semillas para los días que no tienen ningún barrio: el barrio libre más lejos de los centros ya puestos
+    grupos.forEach(function (g) {
+      if (g.x !== null) return;
+      var ref = grupos.filter(function (o) { return o.x !== null; });
+      var mejor = null, md = -1;
+      libres.forEach(function (it) {
+        if (it.dia !== null) return;
+        var d = ref.length ? Math.min.apply(null, ref.map(function (o) { return dist(it, o); })) : -it.x;   // el primero: el más al oeste
+        if (d > md) { md = d; mejor = it; }
+      });
+      if (mejor) { mejor.dia = g.dia; g.x = mejor.x; g.y = mejor.y; g.carga = mejor.w; }
+    });
+    for (var vuelta = 0; vuelta < 12; vuelta++) {
+      libres.forEach(function (it) { it.dia = null; });
+      centros();
+      grupos.forEach(function (g) { if (g.x === null) { var o = grupos.filter(function (q) { return q.x !== null; })[0]; if (o) { g.x = o.x; g.y = o.y; } } });
+      libres.slice().sort(function (a, b) { return b.w - a.w; }).forEach(function (it) {
+        var orden = grupos.slice().sort(function (a, b) { return dist(it, a) - dist(it, b); });
+        var g = orden.filter(function (q) { return q.carga + it.w <= cap; })[0] ||
+                grupos.slice().sort(function (a, b) { return a.carga - b.carga; })[0];
+        it.dia = g.dia; g.carga += it.w;
+        var its = items.filter(function (o) { return o.dia === g.dia; }), sw = 0, sx = 0, sy = 0;   // el centro se va moviendo
+        its.forEach(function (o) { sw += o.w; sx += o.x * o.w; sy += o.y * o.w; });
+        g.x = sx / sw; g.y = sy / sw;
+      });
+    }
+    return items;
+  }
+
+  function renderReparto() {
+    var dc = $('pDias'); dc.textContent = '';
+    DIAS.forEach(function (d) {
+      var b = document.createElement('button');
+      b.textContent = d.c; b.className = repartoDias.indexOf(d.n) !== -1 ? 'sel' : '';
+      b.addEventListener('click', function () {
+        var i = repartoDias.indexOf(d.n);
+        if (i === -1) repartoDias.push(d.n); else repartoDias.splice(i, 1);
+        renderReparto();
+      });
+      dc.appendChild(b);
+    });
+    var oc = $('pOpc'); oc.textContent = '';
+    [['Respetar los que ya tienen día', 'repartoMantener'], ['Saltear los ya recorridos', 'repartoSaltar']].forEach(function (o) {
+      var b = document.createElement('button');
+      b.textContent = o[0];
+      var on = o[1] === 'repartoMantener' ? repartoMantener : repartoSaltar;
+      b.className = on ? 'sel' : '';
+      b.addEventListener('click', function () {
+        if (o[1] === 'repartoMantener') repartoMantener = !repartoMantener; else repartoSaltar = !repartoSaltar;
+        renderReparto();
+      });
+      oc.appendChild(b);
+    });
+    $('pHacer').disabled = !repartoDias.length;
+  }
+  $('lRepartir').addEventListener('click', function () {
+    if (!ZONAS.length) { aviso('Todavía no cargaron los barrios.'); return; }
+    cerrar('vLista'); $('pResultado').textContent = ''; $('pDeshacer').style.display = 'none';
+    renderReparto(); abrir('vReparto');
+  });
+  $('pCerrar').addEventListener('click', function () { cerrar('vReparto'); });
+  $('pHacer').addEventListener('click', function () {
+    var dias = repartoDias.slice().sort(function (a, b) { return (a || 7) - (b || 7); });
+    var items = repartir(dias, repartoMantener, repartoSaltar);
+    respaldoReparto = JSON.stringify(zonasInfo);
+    // los días se ordenan de oeste a este para que el lunes sea lo más al oeste, etc.
+    var porDia = {};
+    items.forEach(function (it) { (porDia[it.dia] = porDia[it.dia] || []).push(it); });
+    var orden = dias.slice().sort(function (a, b) {
+      function cx(d) { var l = porDia[d] || []; return l.length ? l.reduce(function (s, it) { return s + it.x; }, 0) / l.length : 0; }
+      return cx(a) - cx(b);
+    });
+    var diasOrden = dias.slice();
+    var nombres = {};
+    var hayFijos = items.some(function (it) { return it.fijo; });
+    orden.forEach(function (d, i) { nombres[d] = hayFijos ? d : diasOrden[i]; });
+    items.forEach(function (it) {
+      if (!it.fijo) { cambiarInfo(it.z.n, { dia: nombres[it.dia] }); }
+    });
+    var lineas = diasOrden.map(function (d) {
+      var l = items.filter(function (it) { return (it.fijo ? it.dia : nombres[it.dia]) === d; });
+      var km = l.reduce(function (s, it) { return s + it.area; }, 0);
+      return DIAS.filter(function (x) { return x.n === d; })[0].c + ': ' + l.length + ' barrios · ' + km.toFixed(1) + ' km²';
+    });
+    $('pResultado').textContent = 'Listo. Quedó así:\n' + lineas.join('\n') + '\n\nMirá el mapa con el filtro de cada día y corregí lo que no te cierre.';
+    $('pDeshacer').style.display = '';
+    dibujarZonas(); dibujarBarrios();
+  });
+  $('pDeshacer').addEventListener('click', function () {
+    if (respaldoReparto === null) return;
+    zonasInfo = JSON.parse(respaldoReparto); guardar(LS_ZONAS, zonasInfo);
+    respaldoReparto = null;
+    $('pResultado').textContent = 'Deshecho: volvieron los días que tenías antes.';
+    $('pDeshacer').style.display = 'none';
+    dibujarZonas(); dibujarBarrios();
+  });
+
   /* ---------- Ruta ---------- */
   function guardarRuta() {
     if (ruta) guardar(LS_RUTA, ruta);
@@ -775,7 +962,9 @@
     return paradas().filter(function (c) { return !ruta.hechos[c.id]; })[0] || null;
   }
   function crearRuta() {
-    var pts = clientesVisibles();
+    var todos = clientesVisibles();
+    var pts = todos.filter(function (c) { return estadoC(c).k !== 'no' && estadoC(c).k !== 'cliente'; });
+    if (todos.length > pts.length) aviso('Dejé afuera ' + (todos.length - pts.length) + ' que no les interesa o ya son clientes.');
     if (!pts.length) { aviso('No hay clientes para armar la ruta. Elegí un barrio o un día que tenga clientes.'); return; }
     if (pts.length > 80 && !confirm('Son ' + pts.length + ' clientes, la ruta va a ser larguísima. Conviene elegir un barrio primero. ¿Seguimos igual?')) return;
     var armar = function (origen) {
@@ -920,7 +1109,8 @@
         var okC = lc.filter(function (c) {
           return c && typeof c.nombre === 'string' && isFinite(c.lat) && isFinite(c.lng);
         }).map(function (c) {
-          return { id: String(c.id || nuevoId()), nombre: c.nombre, direccion: String(c.direccion || ''), telefono: String(c.telefono || ''), nota: String(c.nota || ''), lat: +c.lat, lng: +c.lng };
+          return { id: String(c.id || nuevoId()), nombre: c.nombre, direccion: String(c.direccion || ''), telefono: String(c.telefono || ''), nota: String(c.nota || ''), lat: +c.lat, lng: +c.lng,
+                   estado: ESTADOS_C.some(function (e) { return e.k === c.estado; }) ? c.estado : 'nuevo' };
         });
         var okB = (Array.isArray(lb) ? lb : []).filter(function (b) {
           return b && typeof b.nombre === 'string' && isFinite(b.lat) && isFinite(b.lng);
