@@ -78,6 +78,9 @@
   .parada small { display:block; font-weight:400; color:#57606a; }
   #lItems button { display:flex; justify-content:space-between; width:100%; margin-top:8px; text-align:left; }
   #lItems small { font-weight:400; color:#57606a; align-self:center; }
+  #cItems button { display:block; width:100%; margin-top:8px; text-align:left; white-space:normal; padding:8px 14px; }
+  #cItems small { display:block; font-weight:400; color:#57606a; margin-left:20px; }
+  .chips button .punto { margin-right:6px; }
   input[type=search] { -webkit-appearance:none; appearance:none; }
 
   #aviso { position:fixed; left:12px; right:12px; top:calc(12px + env(safe-area-inset-top)); z-index:1300;
@@ -109,6 +112,8 @@
     <input id="fDir" maxlength="120">
     <label for="fTel">Teléfono</label>
     <input id="fTel" type="tel" inputmode="tel" maxlength="40">
+    <label>Tipo de cliente</label>
+    <div class="chips" id="fTipo"></div>
     <label for="fNota">Nota</label>
     <textarea id="fNota" maxlength="500"></textarea>
     <div class="botones">
@@ -201,6 +206,20 @@
   </div>
 </div>
 
+<!-- Lista de clientes -->
+<div class="velo" id="vClientes">
+  <div class="hoja">
+    <h2>Clientes</h2>
+    <div class="dato" id="cResumen"></div>
+    <div class="chips" id="cFiltros"></div>
+    <input id="cBuscar" type="search" placeholder="Buscar por nombre, dirección o teléfono…" autocomplete="off" style="margin-top:10px">
+    <div id="cItems"></div>
+    <div class="botones">
+      <button id="cCerrar" style="flex-basis:100%">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Ficha de cliente -->
 <div class="velo" id="vFicha">
   <div class="hoja">
@@ -210,7 +229,8 @@
     <div class="dato" id="kNota"></div>
     <div class="chips estados" id="kEstados"></div>
     <div class="botones">
-      <button class="primario" id="kMaps" style="flex-basis:100%">🗺 Ir en Maps</button>
+      <button class="primario" id="kVer" style="flex-basis:100%">📍 Ver en el mapa</button>
+      <button id="kMaps" style="flex-basis:100%">🗺 Ir en Maps</button>
       <button id="kHecho" style="flex-basis:100%;display:none"></button>
       <button id="kEditar">✏ Editar</button>
       <button class="peligro" id="kBorrar">🗑 Borrar</button>
@@ -261,16 +281,6 @@
     try { var v = JSON.parse(localStorage.getItem(LS_RUTA)); return v && Array.isArray(v.ids) ? v : null; }
     catch (e) { return null; }
   })();
-  var ESTADOS_C = [
-    { k: 'nuevo', t: 'Sin contactar', color: '#d1242f' },
-    { k: 'interesado', t: 'Interesado', color: '#2da44e' },
-    { k: 'volver', t: 'Volver', color: '#fb8500' },
-    { k: 'no', t: 'No le interesa', color: '#6e7781' },
-    { k: 'cliente', t: 'Ya es cliente', color: '#8250df' }
-  ];
-  function estadoC(c) {
-    return ESTADOS_C.filter(function (e) { return e.k === c.estado; })[0] || ESTADOS_C[0];
-  }
   var clientes = leer(LS_CLIENTES, []);
   var barrios = leer(LS_BARRIOS, null);
   if (!barrios || !barrios.length) { barrios = BARRIOS_INICIALES.slice(); guardar(LS_BARRIOS, barrios); }
@@ -297,15 +307,27 @@
     .setView([-34.5703, -59.1050], 14);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(map);
   L.control.attribution({ position: 'topright', prefix: false })
-    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v7').addTo(map);
+    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v9').addTo(map);
 
   var capa = L.layerGroup().addTo(map);
   var miPunto = null;
 
+  /* Tipos de cliente (cada uno con su color de pin) */
+  var TIPOS = [
+    { k: 'fijo', t: 'Fijo', color: '#2da44e' },
+    { k: 'interesado', t: 'Interesado', color: '#f0a500' },
+    { k: 'volver', t: 'Volver', color: '#1f6feb' },
+    { k: 'nunca', t: 'Nunca compró', color: '#d1242f' },
+    { k: 'no', t: 'No le interesa', color: '#6e7781' }
+  ];
+  function tipoDe(c) {
+    return TIPOS.filter(function (t) { return t.k === c.tipo; })[0] || TIPOS.filter(function (t) { return t.k === 'nunca'; })[0];   // sin tipo = nunca compró
+  }
+
   function iconoPin(color) {
     return L.divIcon({
       className: 'pin', iconSize: [36, 46], iconAnchor: [18, 46], tooltipAnchor: [0, -40],
-      html: '<svg width="36" height="46" viewBox="0 0 36 46"><path d="M18 1C8.6 1 1 8.4 1 17.6 1 30 18 45 18 45s17-15 17-27.4C35 8.4 27.4 1 18 1z" fill="' + (color || '#d1242f') + '" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17.5" r="6.5" fill="#fff"/></svg>'
+      html: '<svg width="36" height="46" viewBox="0 0 36 46"><path d="M18 1C8.6 1 1 8.4 1 17.6 1 30 18 45 18 45s17-15 17-27.4C35 8.4 27.4 1 18 1z" fill="' + color + '" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17.5" r="6.5" fill="#fff"/></svg>'
     });
   }
 
@@ -313,8 +335,8 @@
     capa.clearLayers();
     clientesVisibles().forEach(function (c) {
       if (ruta && ruta.ids.indexOf(c.id) !== -1) return;   // ese pin se dibuja numerado
-      var m = L.marker([c.lat, c.lng], { icon: iconoPin(estadoC(c).color) })
-        .bindTooltip(c.nombre, { permanent: true, direction: 'bottom', offset: [0, 0], className: 'etiqueta' });
+      var m = L.marker([c.lat, c.lng], { icon: iconoPin(tipoDe(c).color) })
+        .bindTooltip(seleccion ? c.nombre : nombreCon(c), { permanent: true, direction: 'bottom', offset: [0, 0], className: 'etiqueta' });   // con un barrio elegido, el nombre del barrio sobra
       m.on('click', function () { mostrarFicha(c.id); });
       m.addTo(capa);
     });
@@ -350,6 +372,21 @@
     return ZONAS.filter(function (z) { return normal(z.n) === n; })[0];
   }
   function zonaElegida() { return ZONAS.filter(function (z) { return z.n === seleccion; })[0]; }
+
+  /* Barrio de cada cliente = el contorno donde cae su pin (se guarda en memoria para no recalcular) */
+  var cacheBarrio = {};
+  function barrioDe(c) {
+    var k = c.id + '|' + c.lat + '|' + c.lng;
+    if (!(k in cacheBarrio)) {
+      var z = ZONAS.filter(function (q) { return dentro(c.lat, c.lng, q.p); })[0];
+      cacheBarrio[k] = z ? z.n : '';
+    }
+    return cacheBarrio[k];
+  }
+  function nombreCon(c) {            // "Kiosco Pepe (Ameghino)"; sin paréntesis si el pin cae fuera de todo contorno
+    var b = barrioDe(c);
+    return c.nombre + (b ? ' (' + b + ')' : '');
+  }
 
   /* Día de visita y estado de cada barrio */
   var DIAS = [
@@ -445,6 +482,11 @@
   var btnLista = document.createElement('button');
   btnLista.className = 'primario';
   btnLista.textContent = 'Barrios ▾';
+  var btnClientes = document.createElement('button');
+  btnClientes.textContent = '👥 Clientes';
+  btnClientes.addEventListener('click', function () {
+    $('cBuscar').value = ''; filtroTipo = null; renderClientes(); abrir('vClientes');
+  });
   var btnTodos = document.createElement('button');
   btnTodos.className = 'peligro';
   btnTodos.addEventListener('click', verTodas);
@@ -519,8 +561,8 @@
     $('zNombre').textContent = z.n;
     var n = clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); }).length;
     var enZona = clientes.filter(function (c) { return dentro(c.lat, c.lng, z.p); });
-    var porEstado = ESTADOS_C.map(function (e) {
-      var k = enZona.filter(function (c) { return estadoC(c).k === e.k; }).length;
+    var porEstado = TIPOS.map(function (e) {
+      var k = enZona.filter(function (c) { return tipoDe(c).k === e.k; }).length;
       return k ? k + ' ' + e.t.toLowerCase() : null;
     }).filter(Boolean).join(' · ');
     $('zInfo').textContent = n + (n === 1 ? ' cliente' : ' clientes') + ' en este barrio' + (porEstado ? ' (' + porEstado + ')' : '') +
@@ -552,7 +594,9 @@
 
   fetch('./barrios.json').then(function (r) { return r.json(); }).then(function (a) {
     ZONAS = a;
+    cacheBarrio = {};
     dibujarZonas();
+    dibujar();
   }).catch(function () { aviso('No pude cargar los contornos de los barrios.'); });
 
   /* ---------- Barrios ---------- */
@@ -561,6 +605,7 @@
     var fila = $('barrios');
     fila.textContent = '';
     fila.appendChild(btnLista);
+    fila.appendChild(btnClientes);
     var ps = ruta ? paradas() : [];
     btnRuta.textContent = ruta ? '🧭 Ruta ' + ps.filter(function (c) { return ruta.hechos[c.id]; }).length + '/' + ps.length : '🧭 Ruta';
     btnRuta.className = ruta ? 'primario' : '';
@@ -636,6 +681,19 @@
   });
 
   /* ---------- Formulario de cliente ---------- */
+  var tipoForm = 'nunca';
+  function renderTipoForm() {
+    var cont = $('fTipo'); cont.textContent = '';
+    TIPOS.forEach(function (t) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      var pt = document.createElement('span'); pt.className = 'punto'; pt.style.background = t.color; b.appendChild(pt);
+      b.appendChild(document.createTextNode(t.t));
+      if (tipoForm === t.k) { b.className = 'sel'; b.style.background = t.color; b.style.borderColor = t.color; }
+      b.addEventListener('click', function () { tipoForm = t.k; renderTipoForm(); });
+      cont.appendChild(b);
+    });
+  }
   var editando = null;      // cliente en edición, o null si es nuevo
   var posNueva = null;      // {lat, lng} para un cliente nuevo
 
@@ -647,6 +705,8 @@
     $('fDir').value = cliente ? cliente.direccion : '';
     $('fTel').value = cliente ? cliente.telefono : '';
     $('fNota').value = cliente ? cliente.nota : '';
+    tipoForm = cliente ? tipoDe(cliente).k : 'nunca';
+    renderTipoForm();
     abrir('vFormulario');
     setTimeout(function () { $('fNombre').focus(); }, 50);
   }
@@ -658,12 +718,13 @@
       nombre: nombre,
       direccion: $('fDir').value.trim(),
       telefono: $('fTel').value.trim(),
-      nota: $('fNota').value.trim()
+      nota: $('fNota').value.trim(),
+      tipo: tipoForm
     };
     if (editando) {
       Object.assign(editando, datos);
     } else {
-      clientes.push(Object.assign({ id: nuevoId(), lat: posNueva.lat, lng: posNueva.lng, estado: 'nuevo' }, datos));
+      clientes.push(Object.assign({ id: nuevoId(), lat: posNueva.lat, lng: posNueva.lng }, datos));
     }
     guardar(LS_CLIENTES, clientes);
     cerrar('vFormulario');
@@ -709,11 +770,20 @@
 
   /* ---------- Ficha ---------- */
   var fichaId = null;
-  function mostrarFicha(id) {
+  var ORDEN_FICHA = ['nunca', 'interesado', 'volver', 'no', 'fijo'];   // orden en que se ofrecen en la ficha
+  var volverALista = false;   // true si la ficha se abrió desde la lista de clientes
+  function cerrarFicha(volver) {
+    cerrar('vFicha');
+    if (volver && volverALista) { renderClientes(); abrir('vClientes'); }
+    volverALista = false;
+  }
+  function mostrarFicha(id, desdeLista) {
     var c = clientes.filter(function (x) { return x.id === id; })[0];
     if (!c) return;
     fichaId = id;
-    $('kNombre').textContent = c.nombre;
+    volverALista = !!desdeLista;
+    var desdeListaAntes = volverALista;
+    $('kNombre').textContent = nombreCon(c);
     campo('kDir', 'Dirección', c.direccion);
     campo('kNota', 'Nota', c.nota);
     var t = $('kTel'); t.textContent = '';
@@ -725,15 +795,16 @@
       t.appendChild(a);
     }
     var ke = $('kEstados'); ke.textContent = '';
-    ESTADOS_C.forEach(function (e) {
+    TIPOS.slice().sort(function (a, b) { return ORDEN_FICHA.indexOf(a.k) - ORDEN_FICHA.indexOf(b.k); }).forEach(function (e) {
       var b = document.createElement('button');
-      b.textContent = e.t;
-      if (estadoC(c).k === e.k) { b.className = 'sel'; b.style.background = e.color; }
+      var pt = document.createElement('span'); pt.className = 'punto'; pt.style.background = e.color; b.appendChild(pt);
+      b.appendChild(document.createTextNode(e.t));
+      if (tipoDe(c).k === e.k) { b.className = 'sel'; b.style.background = e.color; b.style.borderColor = e.color; }
       b.addEventListener('click', function () {
-        c.estado = e.k;
+        c.tipo = e.k;
         guardar(LS_CLIENTES, clientes);
         dibujar();
-        mostrarFicha(id);
+        mostrarFicha(id, desdeListaAntes);
       });
       ke.appendChild(b);
     });
@@ -752,7 +823,12 @@
     el.appendChild(document.createTextNode(valor));
   }
   function clienteActual() { return clientes.filter(function (x) { return x.id === fichaId; })[0]; }
-  $('kCerrar').addEventListener('click', function () { cerrar('vFicha'); });
+  $('kCerrar').addEventListener('click', function () { cerrarFicha(true); });
+  $('kVer').addEventListener('click', function () {
+    var c = clienteActual(); if (!c) return;
+    cerrarFicha(false);
+    verEnMapa(c);
+  });
   $('kMaps').addEventListener('click', function () {
     var c = clienteActual(); if (!c) return;
     window.open('https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=' + c.lat + ',' + c.lng, '_blank', 'noopener');
@@ -760,13 +836,13 @@
   $('kHecho').addEventListener('click', function () {
     if (!ruta || !fichaId) return;
     if (ruta.hechos[fichaId]) delete ruta.hechos[fichaId]; else ruta.hechos[fichaId] = true;
-    guardarRuta(); cerrar('vFicha'); dibujar(); dibujarBarrios();
+    guardarRuta(); cerrarFicha(false); dibujar(); dibujarBarrios();
     var pr = proxima();
-    aviso(pr ? 'Anotado. Próxima parada: ' + pr.nombre : 'Ruta completa. Buen laburo.');
+    aviso(pr ? 'Anotado. Próxima parada: ' + nombreCon(pr) : 'Ruta completa. Buen laburo.');
   });
   $('kEditar').addEventListener('click', function () {
     var c = clienteActual(); if (!c) return;
-    cerrar('vFicha');
+    cerrarFicha(false);
     abrirFormulario(c);
   });
   $('kBorrar').addEventListener('click', function () {
@@ -774,13 +850,62 @@
     if (!confirm('¿Borrar a "' + c.nombre + '"? No se puede deshacer.')) return;
     clientes = clientes.filter(function (x) { return x.id !== c.id; });
     guardar(LS_CLIENTES, clientes);
-    cerrar('vFicha');
+    cerrarFicha(true);
     dibujar();
     aviso('Cliente borrado');
   });
 
   // Tocar el fondo oscuro cierra la ficha
-  $('vFicha').addEventListener('click', function (e) { if (e.target === this) cerrar('vFicha'); });
+  $('vFicha').addEventListener('click', function (e) { if (e.target === this) cerrarFicha(true); });
+
+  /* ---------- Lista de clientes ---------- */
+  var filtroTipo = null;   // null = todos, o 'fijo' | 'interesado' | 'nunca'
+  function sinAcentos(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+
+  function renderClientes() {
+    var q = sinAcentos($('cBuscar').value.trim());
+    $('cResumen').textContent = clientes.length + (clientes.length === 1 ? ' cliente' : ' clientes') + ' en total';
+    var fil = $('cFiltros'); fil.textContent = '';
+    [{ k: null, t: 'Todos', n: clientes.length }].concat(TIPOS.map(function (t) {
+      return { k: t.k, t: t.t, color: t.color, n: clientes.filter(function (c) { return tipoDe(c).k === t.k; }).length };
+    })).forEach(function (o) {
+      var b = document.createElement('button');
+      if (o.color) { var pt = document.createElement('span'); pt.className = 'punto'; pt.style.background = o.color; b.appendChild(pt); }
+      b.appendChild(document.createTextNode(o.t + ' (' + o.n + ')'));
+      if (filtroTipo === o.k) { b.className = 'sel'; if (o.color) { b.style.background = o.color; b.style.borderColor = o.color; } }
+      b.addEventListener('click', function () { filtroTipo = o.k; renderClientes(); });
+      fil.appendChild(b);
+    });
+    var cont = $('cItems'); cont.textContent = '';
+    clientes.slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); })
+      .filter(function (c) {
+        if (filtroTipo !== null && tipoDe(c).k !== filtroTipo) return false;
+        return !q || sinAcentos(nombreCon(c) + ' ' + c.direccion + ' ' + c.telefono + ' ' + c.nota).indexOf(q) !== -1;
+      })
+      .forEach(function (c) {
+        var b = document.createElement('button');
+        var pt = document.createElement('span'); pt.className = 'punto'; pt.style.background = tipoDe(c).color;
+        b.appendChild(pt); b.appendChild(document.createTextNode(nombreCon(c)));
+        if (c.direccion) { var sm = document.createElement('small'); sm.textContent = c.direccion; b.appendChild(sm); }
+        b.addEventListener('click', function () { cerrar('vClientes'); mostrarFicha(c.id, true); });
+        cont.appendChild(b);
+      });
+    if (!cont.firstChild) cont.textContent = clientes.length ? 'No hay clientes que coincidan.' : 'Todavía no cargaste clientes. Tocá un punto del mapa para agregar el primero.';
+  }
+  $('cBuscar').addEventListener('input', renderClientes);
+  $('cCerrar').addEventListener('click', function () { cerrar('vClientes'); });
+
+  var halo = null, haloTimer = null;
+  function verEnMapa(c) {
+    // Si el filtro actual lo esconde, se vuelven a mostrar todos
+    if (clientesVisibles().indexOf(c) === -1) ponerFiltro(null);
+    barrioActivo = null; dibujarBarrios();
+    map.flyTo([c.lat, c.lng], 18, { duration: 1 });
+    if (halo) map.removeLayer(halo);
+    clearTimeout(haloTimer);
+    halo = L.circleMarker([c.lat, c.lng], { radius: 32, color: tipoDe(c).color, weight: 4, fillColor: tipoDe(c).color, fillOpacity: 0.15, interactive: false }).addTo(map);
+    haloTimer = setTimeout(function () { if (halo) { map.removeLayer(halo); halo = null; } }, 6000);
+  }
 
   /* ---------- Reparto automático de barrios en días ---------- */
   var repartoDias = [1, 2, 3, 4, 5, 6];
@@ -963,8 +1088,8 @@
   }
   function crearRuta() {
     var todos = clientesVisibles();
-    var pts = todos.filter(function (c) { return estadoC(c).k !== 'no' && estadoC(c).k !== 'cliente'; });
-    if (todos.length > pts.length) aviso('Dejé afuera ' + (todos.length - pts.length) + ' que no les interesa o ya son clientes.');
+    var pts = todos.filter(function (c) { return tipoDe(c).k !== 'no'; });
+    if (todos.length > pts.length) aviso('Dejé afuera ' + (todos.length - pts.length) + (todos.length - pts.length === 1 ? ' que no le interesa.' : ' que no les interesan.'));
     if (!pts.length) { aviso('No hay clientes para armar la ruta. Elegí un barrio o un día que tenga clientes.'); return; }
     if (pts.length > 80 && !confirm('Son ' + pts.length + ' clientes, la ruta va a ser larguísima. Conviene elegir un barrio primero. ¿Seguimos igual?')) return;
     var armar = function (origen) {
@@ -1050,7 +1175,7 @@
       });
       var ver = document.createElement('button');
       ver.className = 'ver';
-      ver.appendChild(document.createTextNode((i + 1) + '. ' + c.nombre));
+      ver.appendChild(document.createTextNode((i + 1) + '. ' + nombreCon(c)));
       if (c.direccion) { var sm = document.createElement('small'); sm.textContent = c.direccion; ver.appendChild(sm); }
       ver.addEventListener('click', function () { cerrar('vRuta'); map.flyTo([c.lat, c.lng], 18); mostrarFicha(c.id); });
       fila.appendChild(ok); fila.appendChild(ver);
@@ -1109,8 +1234,7 @@
         var okC = lc.filter(function (c) {
           return c && typeof c.nombre === 'string' && isFinite(c.lat) && isFinite(c.lng);
         }).map(function (c) {
-          return { id: String(c.id || nuevoId()), nombre: c.nombre, direccion: String(c.direccion || ''), telefono: String(c.telefono || ''), nota: String(c.nota || ''), lat: +c.lat, lng: +c.lng,
-                   estado: ESTADOS_C.some(function (e) { return e.k === c.estado; }) ? c.estado : 'nuevo' };
+          return { id: String(c.id || nuevoId()), nombre: c.nombre, direccion: String(c.direccion || ''), telefono: String(c.telefono || ''), nota: String(c.nota || ''), tipo: TIPOS.some(function (t) { return t.k === c.tipo; }) ? c.tipo : 'nunca', lat: +c.lat, lng: +c.lng };
         });
         var okB = (Array.isArray(lb) ? lb : []).filter(function (b) {
           return b && typeof b.nombre === 'string' && isFinite(b.lat) && isFinite(b.lng);
