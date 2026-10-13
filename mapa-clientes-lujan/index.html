@@ -71,6 +71,14 @@
   .num div.p { background:#fb8500; width:36px; height:36px; margin:-4px 0 0 -4px; font-size:16px; }
   .pre { white-space:pre-line; }
   .estados button.sel { color:#fff; border-color:transparent; }
+  .ultima { background:#f6f8fa; border:1px solid var(--borde); border-radius:10px; padding:10px 12px; font-weight:600; }
+  .hist div { font-size:15px; margin-top:4px; }
+  .aviso-barra { display:none; background:#fff8c5; border:2px solid #d4a72c; border-radius:12px; padding:10px 12px; margin-bottom:8px; }
+  .aviso-barra .t { font-weight:700; }
+  .aviso-barra .fila { margin-top:8px; }
+  #mira { position:fixed; left:50%; top:50%; width:44px; height:44px; margin:-22px 0 0 -22px; border:3px solid #d1242f;
+    border-radius:50%; z-index:1150; pointer-events:none; display:none; }
+  #mira::after { content:''; position:absolute; left:50%; top:50%; width:8px; height:8px; margin:-4px 0 0 -4px; background:#d1242f; border-radius:50%; }
   .parada { display:flex; gap:8px; margin-top:8px; }
   .parada .ver { flex:1 1 auto; min-width:0; text-align:left; white-space:normal; }
   .parada .ok { flex:0 0 56px; padding:0; }
@@ -89,8 +97,14 @@
 </head>
 <body>
 <div id="map"></div>
+<div id="mira"></div>
 
 <div id="barra">
+  <div id="cerca" class="aviso-barra"></div>
+  <div id="mover" class="aviso-barra">
+    <div class="t">Arrastrá el mapa hasta que la mira quede sobre el negocio</div>
+    <div class="fila"><button id="mvCancelar">Cancelar</button><button class="primario" id="mvListo" style="flex:1 1 auto">Listo, el pin va acá</button></div>
+  </div>
   <div class="fila" id="barrios"></div>
   <div class="fila">
     <button class="accion" id="btnUbic" aria-label="Mi ubicación">📍</button>
@@ -220,16 +234,34 @@
   </div>
 </div>
 
+<!-- Registrar visita -->
+<div class="velo" id="vVisita">
+  <form class="hoja" id="formVisita" autocomplete="off">
+    <h2 id="vTitulo">Registrar visita</h2>
+    <div class="chips" id="vFrases"></div>
+    <label for="vTexto">¿Qué pasó?</label>
+    <textarea id="vTexto" maxlength="300"></textarea>
+    <div class="botones">
+      <button type="button" id="vCancelar">Cancelar</button>
+      <button type="submit" class="primario">Guardar visita</button>
+    </div>
+  </form>
+</div>
+
 <!-- Ficha de cliente -->
 <div class="velo" id="vFicha">
   <div class="hoja">
     <h2 id="kNombre"></h2>
+    <div class="dato ultima" id="kUltima"></div>
     <div class="dato" id="kDir"></div>
     <div class="dato" id="kTel"></div>
     <div class="dato" id="kNota"></div>
+    <div class="dato hist" id="kHist"></div>
     <div class="chips estados" id="kEstados"></div>
     <div class="botones">
-      <button class="primario" id="kVer" style="flex-basis:100%">📍 Ver en el mapa</button>
+      <button class="primario" id="kVisita" style="flex-basis:100%">📝 Registrar visita</button>
+      <button id="kVer">📍 Ver en el mapa</button>
+      <button id="kMover">✥ Mover pin</button>
       <button id="kMaps" style="flex-basis:100%">🗺 Ir en Maps</button>
       <button id="kHecho" style="flex-basis:100%;display:none"></button>
       <button id="kEditar">✏ Editar</button>
@@ -307,7 +339,7 @@
     .setView([-34.5703, -59.1050], 14);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(map);
   L.control.attribution({ position: 'topright', prefix: false })
-    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v10').addTo(map);
+    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v11').addTo(map);
 
   var capa = L.layerGroup().addTo(map);
   var miPunto = null, miCirculo = null;
@@ -316,6 +348,7 @@
   var ultimaPos = null;        // { lat, lng, t, prec }
 
   function ponerMiPunto(lat, lng, prec) {
+    var primerPunto = !ultimaPos;
     ultimaPos = { lat: lat, lng: lng, t: Date.now(), prec: prec };
     var r = Math.max(prec || 20, 5);
     if (!miPunto) {
@@ -324,6 +357,8 @@
     } else {
       miPunto.setLatLng([lat, lng]); miCirculo.setLatLng([lat, lng]); miCirculo.setRadius(r);
     }
+    revisarCercania();
+    if (primerPunto && ordenCerca && $('vClientes').classList.contains('abierto')) renderClientes();
   }
   function errorUbicacion(err) {
     if (err.code === 1) { detenerVigilia(true); aviso('No me diste permiso para la ubicación. Activalo en los permisos del navegador.'); }
@@ -377,15 +412,17 @@
     capa.clearLayers();
     clientesVisibles().forEach(function (c) {
       if (ruta && ruta.ids.indexOf(c.id) !== -1) return;   // ese pin se dibuja numerado
+      var et = document.createElement('span');   // texto, no HTML: un nombre raro no puede ejecutar nada
+      et.textContent = seleccion ? c.nombre : nombreCon(c);   // con un barrio elegido, el nombre del barrio sobra
       var m = L.marker([c.lat, c.lng], { icon: iconoPin(tipoDe(c).color) })
-        .bindTooltip(seleccion ? c.nombre : nombreCon(c), { permanent: true, direction: 'bottom', offset: [0, 0], className: 'etiqueta' });   // con un barrio elegido, el nombre del barrio sobra
+        .bindTooltip(et, { permanent: true, direction: 'bottom', offset: [0, 0], className: 'etiqueta' });
       m.on('click', function () { mostrarFicha(c.id); });
       m.addTo(capa);
     });
     if (ruta) dibujarRuta();
   }
   function ajustarEtiquetas() {
-    $('map').classList.toggle('lejos', map.getZoom() < 15);
+    $('map').classList.toggle('lejos', map.getZoom() < (seleccion ? 15 : 16));
     var pocos = (filtroDia !== null && filtroDia !== undefined) || !!seleccion;   // con pocos barrios a la vista, los nombres entran
     $('map').classList.toggle('muylejos', map.getZoom() < 14 && !pocos);
     $('map').classList.toggle('muycerca', map.getZoom() >= 17);
@@ -777,6 +814,11 @@
       nota: $('fNota').value.trim(),
       tipo: tipoForm
     };
+    if (!editando) {
+      var cercano = null, md = Infinity;
+      clientes.forEach(function (c) { var d = distKm(posNueva, c) * 1000; if (d < md) { md = d; cercano = c; } });
+      if (cercano && md < 12 && !confirm('Ya hay "' + cercano.nombre + '" a ' + Math.round(md) + ' m de ahí. ¿Guardar igual?')) return;
+    }
     if (editando) {
       Object.assign(editando, datos);
     } else {
@@ -799,7 +841,7 @@
   // Espera un instante: si era un doble toque (zoom) o un arrastre, no abre el formulario.
   var tapTimer = null;
   map.on('click', function (e) {
-    if (hayVentana()) return;
+    if (hayVentana() || moviendo) return;
     clearTimeout(tapTimer);
     tapTimer = setTimeout(function () {
       if (!hayVentana()) abrirFormulario(null, { lat: e.latlng.lat, lng: e.latlng.lng });
@@ -834,13 +876,22 @@
   }
   function mostrarFicha(id, desdeLista) {
     var c = clientes.filter(function (x) { return x.id === id; })[0];
-    if (!c) return;
+    if (!c || moviendo) return;
     fichaId = id;
     volverALista = !!desdeLista;
     var desdeListaAntes = volverALista;
     $('kNombre').textContent = nombreCon(c);
+    $('kUltima').textContent = resumenVisita(c);
     campo('kDir', 'Dirección', c.direccion);
     campo('kNota', 'Nota', c.nota);
+    var kh2 = $('kHist'); kh2.textContent = '';
+    var vs = (c.visitas || []).slice(-5).reverse();
+    if (vs.length) {
+      var ht = document.createElement('small'); ht.textContent = 'Historial (' + c.visitas.length + ')'; kh2.appendChild(ht);
+      vs.forEach(function (v) {
+        var d = document.createElement('div'); d.textContent = fechaCorta(v.t) + ' · ' + (v.txt || 'visita'); kh2.appendChild(d);
+      });
+    }
     var t = $('kTel'); t.textContent = '';
     if (c.telefono) {
       var s = document.createElement('small'); s.textContent = 'Teléfono'; t.appendChild(s);
@@ -848,6 +899,14 @@
       a.href = 'tel:' + c.telefono.replace(/[^\d+]/g, '');
       a.textContent = '📞 ' + c.telefono;
       t.appendChild(a);
+      var wa = numeroWhatsApp(c.telefono);
+      if (wa) {
+        t.appendChild(document.createTextNode('   '));
+        var aw = document.createElement('a');
+        aw.href = 'https://wa.me/' + wa; aw.target = '_blank'; aw.rel = 'noopener';
+        aw.textContent = '💬 WhatsApp';
+        t.appendChild(aw);
+      }
     }
     var ke = $('kEstados'); ke.textContent = '';
     TIPOS.slice().sort(function (a, b) { return ORDEN_FICHA.indexOf(a.k) - ORDEN_FICHA.indexOf(b.k); }).forEach(function (e) {
@@ -913,8 +972,130 @@
   // Tocar el fondo oscuro cierra la ficha
   $('vFicha').addEventListener('click', function (e) { if (e.target === this) cerrarFicha(true); });
 
+  /* ---------- Historial de visitas ---------- */
+  function haceCuanto(t) {
+    var hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+    var v = new Date(t); v.setHours(0, 0, 0, 0);
+    var d = Math.round((hoy.getTime() - v.getTime()) / 86400000);
+    if (d <= 0) return 'hoy';
+    if (d === 1) return 'ayer';
+    if (d < 14) return 'hace ' + d + ' días';
+    if (d < 60) return 'hace ' + Math.round(d / 7) + ' semanas';
+    return 'hace ' + Math.round(d / 30) + ' meses';
+  }
+  function fechaCorta(t) {
+    var x = new Date(t), p = function (n) { return String(n).padStart(2, '0'); };
+    return p(x.getDate()) + '/' + p(x.getMonth() + 1);
+  }
+  function ultimaVisita(c) { return c.visitas && c.visitas.length ? c.visitas[c.visitas.length - 1] : null; }
+  function resumenVisita(c) {
+    var v = ultimaVisita(c);
+    return v ? 'Última visita ' + haceCuanto(v.t) + (v.txt ? ': ' + v.txt : '') : 'Todavía sin visitas registradas';
+  }
+  function numeroWhatsApp(tel) {   // mejor esfuerzo para números argentinos
+    var d = String(tel).replace(/\D/g, '').replace(/^0+/, '');
+    if (d.indexOf('54') === 0) { if (d.indexOf('549') !== 0) d = '549' + d.slice(2); }
+    else {
+      if (d.length === 12 && d.slice(4, 6) === '15') d = d.slice(0, 4) + d.slice(6);   // 2323 15 xxxxxx
+      if (d.length === 6) d = '2323' + d;                                               // número local de Luján
+      if (d.length === 10) d = '549' + d;
+      else return null;
+    }
+    return d.length >= 12 ? d : null;
+  }
+
+  var FRASES = ['No estaba', 'Pidió precios', 'Le dejé info', 'Compró', 'Volver otro día', 'No le interesa'];
+  $('vFrases').textContent = '';
+  FRASES.forEach(function (f) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.textContent = f;
+    b.addEventListener('click', function () {
+      var t = $('vTexto'); t.value = t.value ? t.value.replace(/[.\s]*$/, '') + '. ' + f : f;
+    });
+    $('vFrases').appendChild(b);
+  });
+  $('kVisita').addEventListener('click', function () {
+    var c = clienteActual(); if (!c) return;
+    $('vTitulo').textContent = 'Visita a ' + c.nombre;
+    $('vTexto').value = '';
+    cerrar('vFicha');
+    abrir('vVisita');
+  });
+  $('vCancelar').addEventListener('click', function () { cerrar('vVisita'); abrir('vFicha'); });
+  $('formVisita').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var c = clienteActual(); if (!c) return;
+    c.visitas = (c.visitas || []).concat([{ t: Date.now(), txt: $('vTexto').value.trim() }]).slice(-50);
+    guardar(LS_CLIENTES, clientes);
+    if (ruta && ruta.ids.indexOf(c.id) !== -1) { ruta.hechos[c.id] = true; guardarRuta(); }   // si estaba en la ruta, ya cuenta como visitado
+    cerrar('vVisita');
+    dibujar(); dibujarBarrios();
+    mostrarFicha(c.id, volverALista);
+    aviso('Visita anotada');
+  });
+
+  /* ---------- "Estás frente a…" ---------- */
+  var avisadoCerca = {}, cercaId = null;
+  function ocultarCerca() { cercaId = null; $('cerca').style.display = 'none'; }
+  function mostrarCerca(c, metros) {
+    cercaId = c.id;
+    var el = $('cerca'); el.textContent = '';
+    var t = document.createElement('div'); t.className = 't';
+    t.textContent = 'Estás frente a: ' + c.nombre + ' (a ' + Math.round(metros) + ' m)';
+    var d = document.createElement('div'); d.textContent = tipoDe(c).t + ' · ' + resumenVisita(c);
+    var f = document.createElement('div'); f.className = 'fila';
+    var ver = document.createElement('button'); ver.className = 'primario'; ver.style.flex = '1 1 auto'; ver.textContent = 'Ver ficha';
+    ver.addEventListener('click', function () { ocultarCerca(); mostrarFicha(c.id); });
+    var x = document.createElement('button'); x.textContent = '✕'; x.setAttribute('aria-label', 'Cerrar aviso');
+    x.addEventListener('click', ocultarCerca);
+    f.appendChild(ver); f.appendChild(x);
+    el.appendChild(t); el.appendChild(d); el.appendChild(f);
+    el.style.display = 'block';
+    try { if (navigator.vibrate) navigator.vibrate(150); } catch (e) {}
+  }
+  function revisarCercania() {
+    if (!ultimaPos || (ultimaPos.prec || 0) > 80 || hayVentana() || moviendo) return;
+    var mejor = null, md = Infinity;
+    clientes.forEach(function (c) {
+      if (tipoDe(c).k === 'no') return;
+      var d = distKm(ultimaPos, c) * 1000;
+      if (d < md) { md = d; mejor = c; }
+    });
+    if (mejor && md <= 40) {
+      if (!avisadoCerca[mejor.id] || Date.now() - avisadoCerca[mejor.id] > 900000) {   // una vez cada 15 minutos por cliente
+        avisadoCerca[mejor.id] = Date.now();
+        mostrarCerca(mejor, md);
+      }
+    } else if (cercaId && (!mejor || md > 90)) ocultarCerca();
+  }
+
+  /* ---------- Mover pin ---------- */
+  var moviendo = null;
+  function terminarMover() {
+    moviendo = null;
+    $('mira').style.display = 'none'; $('mover').style.display = 'none';
+  }
+  $('kMover').addEventListener('click', function () {
+    var c = clienteActual(); if (!c) return;
+    cerrarFicha(false);
+    moviendo = c;
+    map.flyTo([c.lat, c.lng], Math.max(map.getZoom(), 18), { duration: 0.8 });
+    $('mira').style.display = 'block'; $('mover').style.display = 'block';
+  });
+  $('mvCancelar').addEventListener('click', function () { var c = moviendo; terminarMover(); if (c) mostrarFicha(c.id); });
+  $('mvListo').addEventListener('click', function () {
+    var c = moviendo; if (!c) return;
+    var ct = map.getCenter();
+    c.lat = ct.lat; c.lng = ct.lng;
+    guardar(LS_CLIENTES, clientes);
+    terminarMover(); dibujar();
+    mostrarFicha(c.id);
+    aviso('Pin movido');
+  });
+
   /* ---------- Lista de clientes ---------- */
-  var filtroTipo = null;   // null = todos, o 'fijo' | 'interesado' | 'nunca'
+  var filtroTipo = null;   // null = todos, o uno de los tipos
+  var ordenCerca = false;  // true = los más cercanos a mí primero
   function sinAcentos(t) { return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
 
   function renderClientes() {
@@ -931,8 +1112,19 @@
       b.addEventListener('click', function () { filtroTipo = o.k; renderClientes(); });
       fil.appendChild(b);
     });
+    var bc = document.createElement('button');
+    bc.textContent = '📍 Más cerca';
+    if (ordenCerca) bc.className = 'sel';
+    bc.addEventListener('click', function () {
+      ordenCerca = !ordenCerca;
+      if (ordenCerca && !ultimaPos) { iniciarVigilia(false); aviso('Buscando tu ubicación para ordenar por cercanía…'); }
+      renderClientes();
+    });
+    fil.appendChild(bc);
+    var conDist = ordenCerca && ultimaPos;
+    var dist = function (c) { return distKm(ultimaPos, c) * 1000; };
     var cont = $('cItems'); cont.textContent = '';
-    clientes.slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); })
+    clientes.slice().sort(function (a, b) { return conDist ? dist(a) - dist(b) : a.nombre.localeCompare(b.nombre, 'es'); })
       .filter(function (c) {
         if (filtroTipo !== null && tipoDe(c).k !== filtroTipo) return false;
         return !q || sinAcentos(nombreCon(c) + ' ' + c.direccion + ' ' + c.telefono + ' ' + c.nota).indexOf(q) !== -1;
@@ -941,7 +1133,11 @@
         var b = document.createElement('button');
         var pt = document.createElement('span'); pt.className = 'punto'; pt.style.background = tipoDe(c).color;
         b.appendChild(pt); b.appendChild(document.createTextNode(nombreCon(c)));
-        if (c.direccion) { var sm = document.createElement('small'); sm.textContent = c.direccion; b.appendChild(sm); }
+        var partes = [];
+        if (conDist) { var m = dist(c); partes.push(m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(1) + ' km'); }
+        var uv = ultimaVisita(c); if (uv) partes.push('visitado ' + haceCuanto(uv.t));
+        if (c.direccion) partes.push(c.direccion);
+        if (partes.length) { var sm = document.createElement('small'); sm.textContent = partes.join(' · '); b.appendChild(sm); }
         b.addEventListener('click', function () { cerrar('vClientes'); mostrarFicha(c.id, true); });
         cont.appendChild(b);
       });
@@ -1290,7 +1486,9 @@
         var okC = lc.filter(function (c) {
           return c && typeof c.nombre === 'string' && isFinite(c.lat) && isFinite(c.lng);
         }).map(function (c) {
-          return { id: String(c.id || nuevoId()), nombre: c.nombre, direccion: String(c.direccion || ''), telefono: String(c.telefono || ''), nota: String(c.nota || ''), tipo: TIPOS.some(function (t) { return t.k === c.tipo; }) ? c.tipo : 'nunca', lat: +c.lat, lng: +c.lng };
+          return { id: String(c.id || nuevoId()), nombre: c.nombre, direccion: String(c.direccion || ''), telefono: String(c.telefono || ''), nota: String(c.nota || ''), tipo: TIPOS.some(function (t) { return t.k === c.tipo; }) ? c.tipo : 'nunca', lat: +c.lat, lng: +c.lng,
+                   visitas: (Array.isArray(c.visitas) ? c.visitas : []).filter(function (v) { return v && isFinite(v.t); }).slice(-50)
+                     .map(function (v) { return { t: +v.t, txt: String(v.txt || '').slice(0, 300) }; }) };
         });
         var okB = (Array.isArray(lb) ? lb : []).filter(function (b) {
           return b && typeof b.nombre === 'string' && isFinite(b.lat) && isFinite(b.lng);
