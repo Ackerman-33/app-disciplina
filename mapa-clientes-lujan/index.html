@@ -286,7 +286,7 @@
     .setView([-34.5703, -59.1050], 14);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(map);
   L.control.attribution({ position: 'topright', prefix: false })
-    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v7').addTo(map);
+    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v8').addTo(map);
 
   var capa = L.layerGroup().addTo(map);
   var miPunto = null;
@@ -313,7 +313,7 @@
     clientesVisibles().forEach(function (c) {
       if (ruta && ruta.ids.indexOf(c.id) !== -1) return;   // ese pin se dibuja numerado
       var m = L.marker([c.lat, c.lng], { icon: iconoPin(tipoDe(c).color) })
-        .bindTooltip(c.nombre, { permanent: true, direction: 'bottom', offset: [0, 0], className: 'etiqueta' });
+        .bindTooltip(nombreCon(c), { permanent: true, direction: 'bottom', offset: [0, 0], className: 'etiqueta' });
       m.on('click', function () { mostrarFicha(c.id); });
       m.addTo(capa);
     });
@@ -349,6 +349,21 @@
     return ZONAS.filter(function (z) { return normal(z.n) === n; })[0];
   }
   function zonaElegida() { return ZONAS.filter(function (z) { return z.n === seleccion; })[0]; }
+
+  /* Barrio de cada cliente = el contorno donde cae su pin (se guarda en memoria para no recalcular) */
+  var cacheBarrio = {};
+  function barrioDe(c) {
+    var k = c.id + '|' + c.lat + '|' + c.lng;
+    if (!(k in cacheBarrio)) {
+      var z = ZONAS.filter(function (q) { return dentro(c.lat, c.lng, q.p); })[0];
+      cacheBarrio[k] = z ? z.n : '';
+    }
+    return cacheBarrio[k];
+  }
+  function nombreCon(c) {            // "Kiosco Pepe (Ameghino)"; sin paréntesis si el pin cae fuera de todo contorno
+    var b = barrioDe(c);
+    return c.nombre + (b ? ' (' + b + ')' : '');
+  }
 
   /* Día de visita y estado de cada barrio */
   var DIAS = [
@@ -551,7 +566,9 @@
 
   fetch('./barrios.json').then(function (r) { return r.json(); }).then(function (a) {
     ZONAS = a;
+    cacheBarrio = {};
     dibujarZonas();
+    dibujar();
   }).catch(function () { aviso('No pude cargar los contornos de los barrios.'); });
 
   /* ---------- Barrios ---------- */
@@ -736,7 +753,7 @@
     if (!c) return;
     fichaId = id;
     volverALista = !!desdeLista;
-    $('kNombre').textContent = c.nombre;
+    $('kNombre').textContent = nombreCon(c);
     var kt = $('kTipo'); kt.textContent = '';
     var tp = tipoDe(c);
     var kpt = document.createElement('span'); kpt.className = 'punto'; kpt.style.background = tp.color;
@@ -781,7 +798,7 @@
     if (ruta.hechos[fichaId]) delete ruta.hechos[fichaId]; else ruta.hechos[fichaId] = true;
     guardarRuta(); cerrarFicha(false); dibujar(); dibujarBarrios();
     var pr = proxima();
-    aviso(pr ? 'Anotado. Próxima parada: ' + pr.nombre : 'Ruta completa. Buen laburo.');
+    aviso(pr ? 'Anotado. Próxima parada: ' + nombreCon(pr) : 'Ruta completa. Buen laburo.');
   });
   $('kEditar').addEventListener('click', function () {
     var c = clienteActual(); if (!c) return;
@@ -823,12 +840,12 @@
     clientes.slice().sort(function (a, b) { return a.nombre.localeCompare(b.nombre, 'es'); })
       .filter(function (c) {
         if (filtroTipo !== null && tipoDe(c).k !== filtroTipo) return false;
-        return !q || sinAcentos(c.nombre + ' ' + c.direccion + ' ' + c.telefono + ' ' + c.nota).indexOf(q) !== -1;
+        return !q || sinAcentos(nombreCon(c) + ' ' + c.direccion + ' ' + c.telefono + ' ' + c.nota).indexOf(q) !== -1;
       })
       .forEach(function (c) {
         var b = document.createElement('button');
         var pt = document.createElement('span'); pt.className = 'punto'; pt.style.background = tipoDe(c).color;
-        b.appendChild(pt); b.appendChild(document.createTextNode(c.nombre));
+        b.appendChild(pt); b.appendChild(document.createTextNode(nombreCon(c)));
         if (c.direccion) { var sm = document.createElement('small'); sm.textContent = c.direccion; b.appendChild(sm); }
         b.addEventListener('click', function () { cerrar('vClientes'); mostrarFicha(c.id, true); });
         cont.appendChild(b);
@@ -979,7 +996,7 @@
       });
       var ver = document.createElement('button');
       ver.className = 'ver';
-      ver.appendChild(document.createTextNode((i + 1) + '. ' + c.nombre));
+      ver.appendChild(document.createTextNode((i + 1) + '. ' + nombreCon(c)));
       if (c.direccion) { var sm = document.createElement('small'); sm.textContent = c.direccion; ver.appendChild(sm); }
       ver.addEventListener('click', function () { cerrar('vRuta'); map.flyTo([c.lat, c.lng], 18); mostrarFicha(c.id); });
       fila.appendChild(ok); fila.appendChild(ver);
