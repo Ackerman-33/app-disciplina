@@ -307,10 +307,52 @@
     .setView([-34.5703, -59.1050], 14);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, crossOrigin: true }).addTo(map);
   L.control.attribution({ position: 'topright', prefix: false })
-    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v9').addTo(map);
+    .addAttribution('© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · v10').addTo(map);
 
   var capa = L.layerGroup().addTo(map);
-  var miPunto = null;
+  var miPunto = null, miCirculo = null;
+  var vigilia = null;          // id de watchPosition mientras se sigue la ubicación
+  var retomarVigilia = false;  // se pausa al salir de la app para ahorrar batería
+  var ultimaPos = null;        // { lat, lng, t, prec }
+
+  function ponerMiPunto(lat, lng, prec) {
+    ultimaPos = { lat: lat, lng: lng, t: Date.now(), prec: prec };
+    var r = Math.max(prec || 20, 5);
+    if (!miPunto) {
+      miCirculo = L.circle([lat, lng], { radius: r, color: '#1f6feb', weight: 1, fillColor: '#1f6feb', fillOpacity: 0.12, interactive: false }).addTo(map);
+      miPunto = L.circleMarker([lat, lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#1f6feb', fillOpacity: 1, interactive: false }).addTo(map);
+    } else {
+      miPunto.setLatLng([lat, lng]); miCirculo.setLatLng([lat, lng]); miCirculo.setRadius(r);
+    }
+  }
+  function errorUbicacion(err) {
+    if (err.code === 1) { detenerVigilia(true); aviso('No me diste permiso para la ubicación. Activalo en los permisos del navegador.'); }
+    else aviso('No pude encontrar tu ubicación. Probá de nuevo al aire libre.');
+  }
+  function iniciarVigilia(centrar) {
+    if (!navigator.geolocation) { aviso('Este celu no permite usar la ubicación.'); return; }
+    if (vigilia !== null) return;
+    aviso('Buscando tu ubicación…');
+    var primera = true;
+    vigilia = navigator.geolocation.watchPosition(function (p) {
+      ponerMiPunto(p.coords.latitude, p.coords.longitude, p.coords.accuracy);
+      if (primera) {
+        primera = false;
+        if (centrar) map.flyTo([p.coords.latitude, p.coords.longitude], Math.max(map.getZoom(), 17), { duration: 1 });
+        if (p.coords.accuracy > 100) aviso('Ubicación poco precisa (a unos ' + Math.round(p.coords.accuracy) + ' m). Probá al aire libre.');
+      }
+    }, errorUbicacion, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+    dibujarBarrios();
+  }
+  function detenerVigilia(sacarPunto) {
+    if (vigilia !== null) { navigator.geolocation.clearWatch(vigilia); vigilia = null; }
+    if (sacarPunto && miPunto) { map.removeLayer(miPunto); map.removeLayer(miCirculo); miPunto = null; miCirculo = null; ultimaPos = null; }
+    dibujarBarrios();
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden && vigilia !== null) { retomarVigilia = true; navigator.geolocation.clearWatch(vigilia); vigilia = null; }
+    else if (!document.hidden && retomarVigilia) { retomarVigilia = false; iniciarVigilia(false); }
+  });
 
   /* Tipos de cliente (cada uno con su color de pin) */
   var TIPOS = [
@@ -493,6 +535,17 @@
   var btnFiltro = document.createElement('button');
   btnFiltro.className = 'peligro';
   btnFiltro.addEventListener('click', function () { ponerFiltro(null); });
+  var btnYo = document.createElement('button');
+  btnYo.textContent = '◎ Dónde estoy';
+  btnYo.addEventListener('click', function () {
+    if (vigilia === null) iniciarVigilia(true);
+    else if (ultimaPos) map.flyTo([ultimaPos.lat, ultimaPos.lng], Math.max(map.getZoom(), 17), { duration: 1 });
+    else aviso('Todavía estoy buscando tu ubicación…');
+  });
+  var btnYoOff = document.createElement('button');
+  btnYoOff.className = 'peligro';
+  btnYoOff.textContent = '✕ Ocultar';
+  btnYoOff.addEventListener('click', function () { detenerVigilia(true); });
   var btnRuta = document.createElement('button');
   btnRuta.addEventListener('click', function () { if (ruta) abrirRuta(); else crearRuta(); });
   var btnInfo = document.createElement('button');
@@ -604,6 +657,9 @@
   function dibujarBarrios() {
     var fila = $('barrios');
     fila.textContent = '';
+    btnYo.className = vigilia !== null ? 'primario' : '';
+    fila.appendChild(btnYo);
+    if (vigilia !== null || miPunto) fila.appendChild(btnYoOff);
     fila.appendChild(btnLista);
     fila.appendChild(btnClientes);
     var ps = ruta ? paradas() : [];
@@ -758,8 +814,7 @@
     navigator.geolocation.getCurrentPosition(function (p) {
       var pos = { lat: p.coords.latitude, lng: p.coords.longitude };
       map.setView([pos.lat, pos.lng], 18);
-      if (miPunto) miPunto.setLatLng([pos.lat, pos.lng]);
-      else miPunto = L.circleMarker([pos.lat, pos.lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#1f6feb', fillOpacity: 1, interactive: false }).addTo(map);
+      ponerMiPunto(pos.lat, pos.lng, p.coords.accuracy);
       abrirFormulario(null, pos);
     }, function (err) {
       aviso(err.code === 1
@@ -1101,6 +1156,7 @@
       abrirRuta();
     };
     var desdeCentro = function () { var c = map.getCenter(); armar({ lat: c.lat, lng: c.lng }); };
+    if (ultimaPos && Date.now() - ultimaPos.t < 120000) { armar({ lat: ultimaPos.lat, lng: ultimaPos.lng }); return; }
     if (!navigator.geolocation) { desdeCentro(); return; }
     aviso('Buscando tu ubicación para empezar la ruta…');
     navigator.geolocation.getCurrentPosition(function (p) {
